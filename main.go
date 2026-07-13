@@ -18,7 +18,7 @@ const DefaultPort = 11211
 type server struct {
 	logger *slog.Logger
 
-	store map[string]value
+	store *concurrentMap[string, value]
 }
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 
 	server := &server{
 		logger: logger,
-		store:  make(map[string]value),
+		store:  newConcurrentMap[string, value](),
 	}
 
 	addr := fmt.Sprintf(":%d", *port)
@@ -122,7 +122,7 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 func (s *server) handleGet(conn net.Conn, key []byte) error {
 	var buf bytes.Buffer
 
-	if val, ok := s.store[string(key)]; ok {
+	if val, ok := s.store.get(string(key)); ok {
 		fmt.Fprintf(&buf, "VALUE %s %d %d\r\n%s\r\n", key, val.flags, len(val.data), val.data)
 	}
 
@@ -159,11 +159,13 @@ func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd setCommand) erro
 	}
 	data := dataWithCrlf[:len(dataWithCrlf)-2]
 
-	s.store[cmd.key] = value{
+	val := value{
 		data:          data,
 		flags:         cmd.flags,
 		expireTimeSec: cmd.expireTimeSec,
 	}
+
+	s.store.set(cmd.key, val)
 
 	conn.Write([]byte("STORED\r\n"))
 	return nil

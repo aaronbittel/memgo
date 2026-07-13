@@ -1,11 +1,64 @@
 package main
 
 import (
+	"fmt"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestServerConcurrentCounter(t *testing.T) {
+	ts := newTestServer(t)
+	ts.store.set("counter", value{data: []byte("0")})
+	ts.serve(t)
+
+	const (
+		clients    = 5
+		iterations = 30
+	)
+
+	start := make(chan struct{})
+	errs := make(chan error, clients)
+
+	var wg sync.WaitGroup
+
+	for i := range clients {
+		wg.Go(func() {
+			tce, err := newTestClientE(ts.addr())
+			if err != nil {
+				errs <- fmt.Errorf("client %d: connect: %w", i, err)
+				return
+			}
+			defer tce.conn.Close()
+
+			<-start
+
+			for it := range iterations {
+				if err := tce.send("get counter\r\n"); err != nil {
+					errs <- fmt.Errorf("client %d iteration %d: get: %w", i, it, err)
+					return
+				}
+
+				msg := fmt.Sprintf("set counter 0 0 1\r\n%s\r\n", strconv.Itoa(i))
+				if err := tce.send(msg); err != nil {
+					errs <- fmt.Errorf("client %d iteration %d: get: %w", i, it, err)
+					return
+				}
+			}
+		})
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		t.Error(err)
+	}
+}
 
 func TestServerSetAndGet(t *testing.T) {
 	ts := newTestServer(t)
@@ -33,14 +86,14 @@ func TestServerSettingValue(t *testing.T) {
 	tc.assertReadEquals(t, "STORED\r\n")
 
 	want := value{data: []byte("1234")}
-	got, ok := ts.store["test"]
+	got, ok := ts.store.get("test")
 	require.True(t, ok, "expected store to contain key 'test'")
 	require.Equal(t, want, got)
 }
 
 func TestServerRetrievingValue(t *testing.T) {
 	ts := newTestServer(t)
-	ts.store["test"] = value{data: []byte("hello, world!")}
+	ts.store.set("test", value{data: []byte("hello, world!")})
 
 	ts.serve(t)
 

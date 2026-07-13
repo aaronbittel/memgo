@@ -28,7 +28,7 @@ type testClient struct {
 	conn net.Conn
 }
 
-func newTestClient(t *testing.T, addr string) testClient {
+func newTestClient(t *testing.T, addr string) *testClient {
 	t.Helper()
 
 	conn, err := net.Dial("tcp", addr)
@@ -38,10 +38,10 @@ func newTestClient(t *testing.T, addr string) testClient {
 		conn.Close()
 	})
 
-	return testClient{conn: conn}
+	return &testClient{conn: conn}
 }
 
-func (tc testClient) send(t *testing.T, s string) {
+func (tc *testClient) send(t *testing.T, s string) {
 	t.Helper()
 
 	require.NoError(t, tc.conn.SetWriteDeadline(time.Now().Add(time.Second)))
@@ -50,7 +50,7 @@ func (tc testClient) send(t *testing.T, s string) {
 	require.NoError(t, err)
 }
 
-func (tc testClient) assertReadEquals(t *testing.T, want string) {
+func (tc *testClient) assertReadEquals(t *testing.T, want string) {
 	t.Helper()
 
 	require.NoError(t, tc.conn.SetReadDeadline(time.Now().Add(time.Second)))
@@ -100,9 +100,31 @@ func newTestServer(t *testing.T) *testServer {
 	return &testServer{
 		server: server{
 			logger: slog.New(slog.DiscardHandler),
-			store:  make(map[string]value),
+			store:  newConcurrentMap[string, value](),
 		},
 		ln:       newTestListener(t),
 		serveErr: make(chan error, 1),
 	}
+}
+
+type testClientE struct {
+	conn net.Conn
+}
+
+func newTestClientE(addr string) (*testClientE, error) {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &testClientE{conn: conn}, nil
+}
+
+func (tce *testClientE) send(s string) error {
+	if err := tce.conn.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
+		return err
+	}
+
+	_, err := io.WriteString(tce.conn, s)
+	return err
 }
