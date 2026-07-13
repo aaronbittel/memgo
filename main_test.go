@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestServerConcurrentCounter(t *testing.T) {
+func TestServerConcurrent(t *testing.T) {
 	ts := newTestServer(t)
 	ts.store.set("counter", value{data: []byte("0")})
 	ts.serve(t)
@@ -60,80 +60,123 @@ func TestServerConcurrentCounter(t *testing.T) {
 	}
 }
 
+func TestServerSet(t *testing.T) {
+	tests := []struct {
+		name         string
+		command      string
+		wantResponse string
+		want         value
+	}{
+		{
+			name:    "stores value",
+			command: "set test 0 0 4\r\n1234\r\n",
+			want:    value{data: []byte("1234")},
+		},
+		{
+			name:    "stores flags",
+			command: "set test 10 0 4\r\n1234\r\n",
+			want: value{
+				data:  []byte("1234"),
+				flags: 10,
+			},
+		},
+		{
+			name:    "stores expiry time",
+			command: "set test 0 20 4\r\n1234\r\n",
+			want: value{
+				data:          []byte("1234"),
+				expireTimeSec: 20,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := newTestServer(t)
+			ts.serve(t)
+
+			tc := newTestClient(t, ts.addr())
+
+			tc.send(t, tt.command)
+			tc.requireResponse(t, "STORED\r\n")
+
+			ts.requireStoredValue(t, "test", tt.want)
+		})
+	}
+
+	t.Run("no reply", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 0 5 noreply\r\nhello\r\n")
+		tc.assertNoResponse(t)
+		ts.requireStoredValue(t, "test", value{data: []byte("hello")})
+	})
+}
+
 func TestServerSetAndGet(t *testing.T) {
-	ts := newTestServer(t)
-	ts.serve(t)
+	tests := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{
+			name:    "stores value",
+			command: "set test 0 0 5\r\nhello\r\n",
+			want:    "VALUE test 0 5\r\nhello\r\nEND\r\n",
+		},
+		{
+			name:    "flags",
+			command: "set test 10 0 5\r\nhello\r\n",
+			want:    "VALUE test 10 5\r\nhello\r\nEND\r\n",
+		},
+		{
+			name:    "expiry time",
+			command: "set test 0 20 5\r\nhello\r\n",
+			want:    "VALUE test 0 5\r\nhello\r\nEND\r\n",
+		},
+	}
 
-	tc := newTestClient(t, ts.addr())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := newTestServer(t)
+			ts.serve(t)
 
-	tc.send(t, "get test\r\n")
-	tc.assertReadEquals(t, "END\r\n")
+			tc := newTestClient(t, ts.addr())
 
-	tc.send(t, "set test 0 0 5\r\nhello\r\n")
-	tc.assertReadEquals(t, "STORED\r\n")
+			tc.send(t, tt.command)
+			tc.requireResponse(t, "STORED\r\n")
 
-	tc.send(t, "get test\r\n")
-	tc.assertReadEquals(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
+			tc.send(t, "get test\r\n")
+			tc.requireResponse(t, tt.want)
+		})
+	}
 }
 
-func TestServerSettingValue(t *testing.T) {
-	ts := newTestServer(t)
-	ts.serve(t)
+func TestServerGet(t *testing.T) {
+	t.Run("value", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.store.set("test", value{data: []byte("hello, world!")})
 
-	tc := newTestClient(t, ts.addr())
+		ts.serve(t)
 
-	tc.send(t, "set test 0 0 4\r\n1234\r\n")
-	tc.assertReadEquals(t, "STORED\r\n")
+		tc := newTestClient(t, ts.addr())
 
-	want := value{data: []byte("1234")}
-	got, ok := ts.store.get("test")
-	require.True(t, ok, "expected store to contain key 'test'")
-	require.Equal(t, want, got)
-}
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 13\r\nhello, world!\r\nEND\r\n")
+	})
 
-func TestServerNoReply(t *testing.T) {
-	ts := newTestServer(t)
-	ts.serve(t)
+	t.Run("missing value", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
 
-	tc := newTestClient(t, ts.addr())
+		tc := newTestClient(t, ts.addr())
 
-	tc.send(t, "set test 0 0 5 noreply\r\nhello\r\n")
-	tc.assertNoResponse(t)
-}
-
-func TestServerSetAndGetWithFlags(t *testing.T) {
-	ts := newTestServer(t)
-	ts.serve(t)
-
-	tc := newTestClient(t, ts.addr())
-
-	tc.send(t, "set test 10 0 5\r\nhello\r\n")
-	tc.assertReadEquals(t, "STORED\r\n")
-
-	tc.send(t, "get test\r\n")
-	tc.assertReadEquals(t, "VALUE test 10 5\r\nhello\r\nEND\r\n")
-}
-
-func TestServerRetrievingValue(t *testing.T) {
-	ts := newTestServer(t)
-	ts.store.set("test", value{data: []byte("hello, world!")})
-
-	ts.serve(t)
-
-	tc := newTestClient(t, ts.addr())
-
-	tc.send(t, "get test\r\n")
-	tc.assertReadEquals(t, "VALUE test 0 13\r\nhello, world!\r\nEND\r\n")
-}
-
-func TestServerGetMissingValue(t *testing.T) {
-	ts := newTestServer(t)
-	ts.serve(t)
-
-	tc := newTestClient(t, ts.addr())
-
-	tc.send(t, "get missing\r\n")
-	tc.assertReadEquals(t, "END\r\n")
+		tc.send(t, "get missing\r\n")
+		tc.requireResponse(t, "END\r\n")
+	})
 }
 
 func TestParseSetCommandLine(t *testing.T) {

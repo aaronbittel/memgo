@@ -51,7 +51,7 @@ func (tc *testClient) send(t *testing.T, s string) {
 	require.NoError(t, err)
 }
 
-func (tc *testClient) assertReadEquals(t *testing.T, want string) {
+func (tc *testClient) requireResponse(t *testing.T, want string) {
 	t.Helper()
 
 	require.NoError(t, tc.conn.SetReadDeadline(time.Now().Add(time.Second)))
@@ -115,6 +115,12 @@ func newTestServer(t *testing.T) *testServer {
 		ln:       newTestListener(t),
 		serveErr: make(chan error, 1),
 	}
+}
+
+func (ts *testServer) requireStoredValue(t *testing.T, key string, value value) {
+	got, ok := ts.store.get(key)
+	require.True(t, ok, "expected store to contain key 'test'")
+	require.Equal(t, value, got)
 }
 
 type testClientE struct {
