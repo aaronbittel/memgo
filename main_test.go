@@ -1,9 +1,6 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -15,18 +12,17 @@ import (
 )
 
 func TestServerSettingValue(t *testing.T) {
-	const port = 9999
+	const addr = ":9999"
 
 	server := server{
 		logger: slog.New(slog.DiscardHandler),
-		port:   port,
 		store:  make(map[string]value),
 	}
 
-	go server.Start()
+	go server.ListenAndServe(addr)
 	time.Sleep(50 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", fmt.Sprintf(":%d", port))
+	conn, err := net.Dial("tcp", addr)
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -47,64 +43,41 @@ func TestServerSettingValue(t *testing.T) {
 	assert.Equal(t, wantResponse, string(buf))
 }
 
-func TestParseCommand(t *testing.T) {
-	input := []byte("set test 0 0 4\r\n1234\r\n")
-
-	wantKey := "test"
-	wantValue := value{
-		data:          []byte("1234"),
-		flags:         0,
-		expireTimeSec: 0,
-	}
-
-	br := bufio.NewReader(bytes.NewReader(input))
-	key, value, err := parseCommand(br)
-	require.NoError(t, err)
-
-	assert.Equal(t, wantKey, key)
-	assert.Equal(t, wantValue, value)
-}
-
-func TestParseCommandLine(t *testing.T) {
+func TestParseSetCommandLine(t *testing.T) {
 	validTests := []struct {
 		name  string
 		input string
-		want  *command
+		want  setCommand
 	}{
 		{
 			name:  "valid set command",
-			input: "set test 0 0 4\r\n",
-			want: &command{
-				kind:    commandSet,
+			input: "test 0 0 4",
+			want: setCommand{
 				key:     "test",
 				dataLen: 4,
 			},
 		},
 		{
 			name:  "command with no reply set",
-			input: "set test 127 5124 4 noreply\r\n",
-			want: &command{
-				kind:          commandSet,
+			input: "test 127 5124 4 noreply",
+			want: setCommand{
 				key:           "test",
 				flags:         127,
 				expireTimeSec: 5124,
 				dataLen:       4,
-				omitReplay:    true,
+				omitReply:     true,
 			},
 		},
 		{
 			name:  "empty data",
-			input: "set test 0 0 0\r\n",
-			want: &command{
-				kind: commandSet,
-				key:  "test",
-			},
+			input: "test 0 0 0",
+			want:  setCommand{key: "test"},
 		},
 	}
 
 	for _, tt := range validTests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseCommandLine([]byte(tt.input))
+			got, err := parseSetCommandLine([]byte(tt.input))
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.want, got)
