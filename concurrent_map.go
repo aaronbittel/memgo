@@ -26,6 +26,13 @@ func (cm *concurrentMap[K, V]) set(key K, value V) {
 	cm.store[key] = value
 }
 
+func (cm *concurrentMap[K, V]) delete(key K) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	delete(cm.store, key)
+}
+
 // update atomically replaces the value associated with key.
 //
 // fn executes while cm's write lock is held. It must not call get, set,

@@ -62,7 +62,7 @@ func (tc *testClient) requireResponse(t *testing.T, want string) {
 	require.Equal(t, want, string(buf))
 }
 
-func (tc *testClient) assertNoResponse(t *testing.T) {
+func (tc *testClient) requireNoResponse(t *testing.T) {
 	t.Helper()
 
 	require.NoError(t, tc.conn.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
@@ -72,7 +72,7 @@ func (tc *testClient) assertNoResponse(t *testing.T) {
 }
 
 type testServer struct {
-	server
+	*server
 	ln       net.Listener
 	serveErr chan error
 }
@@ -108,19 +108,25 @@ func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 
 	return &testServer{
-		server: server{
-			logger: slog.New(slog.DiscardHandler),
-			store:  newConcurrentMap[string, value](),
-		},
+		server:   newServer(slog.New(slog.DiscardHandler)),
 		ln:       newTestListener(t),
 		serveErr: make(chan error, 1),
 	}
 }
 
-func (ts *testServer) requireStoredValue(t *testing.T, key string, value value) {
+func (ts *testServer) requireStoredValue(t *testing.T, key string, want value) {
+	t.Helper()
+
 	got, ok := ts.store.get(key)
 	require.True(t, ok, "expected store to contain key 'test'")
-	require.Equal(t, value, got)
+	require.Equal(t, want, got)
+}
+
+func (ts *testServer) requireKeyMissing(t *testing.T, key string) {
+	t.Helper()
+
+	_, ok := ts.store.get(key)
+	require.Falsef(t, ok, "expected store not to contain key %q", key)
 }
 
 type testClientE struct {

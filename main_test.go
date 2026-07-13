@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,28 @@ func TestServerConcurrent(t *testing.T) {
 	}
 }
 
+func TestSetExpiry(t *testing.T) {
+	t.Run("negative", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 -1 5\r\nhello\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "END\r\n")
+
+		ts.requireKeyMissing(t, "test")
+	})
+}
+
 func TestServerSet(t *testing.T) {
+	fixedNow := func() time.Time {
+		return time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	}
+
 	tests := []struct {
 		name         string
 		command      string
@@ -84,8 +106,8 @@ func TestServerSet(t *testing.T) {
 			name:    "stores expiry time",
 			command: "set test 0 20 4\r\n1234\r\n",
 			want: value{
-				data:          []byte("1234"),
-				expireTimeSec: 20,
+				data:      []byte("1234"),
+				expiredAt: fixedNow().Add(20 * time.Second),
 			},
 		},
 	}
@@ -93,6 +115,8 @@ func TestServerSet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ts := newTestServer(t)
+			ts.now = fixedNow
+
 			ts.serve(t)
 
 			tc := newTestClient(t, ts.addr())
@@ -111,7 +135,7 @@ func TestServerSet(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 0 5 noreply\r\nhello\r\n")
-		tc.assertNoResponse(t)
+		tc.requireNoResponse(t)
 		ts.requireStoredValue(t, "test", value{data: []byte("hello")})
 	})
 }

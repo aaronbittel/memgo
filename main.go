@@ -11,14 +11,24 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"time"
 )
 
 const DefaultPort = 11211
 
 type server struct {
 	logger *slog.Logger
+	now    func() time.Time
 
 	store *concurrentMap[string, value]
+}
+
+func newServer(logger *slog.Logger) *server {
+	return &server{
+		logger: logger,
+		now:    time.Now,
+		store:  newConcurrentMap[string, value](),
+	}
 }
 
 func main() {
@@ -123,7 +133,11 @@ func (s *server) handleGet(conn net.Conn, key []byte) error {
 	var buf bytes.Buffer
 
 	if val, ok := s.store.get(string(key)); ok {
-		fmt.Fprintf(&buf, "VALUE %s %d %d\r\n%s\r\n", key, val.flags, len(val.data), val.data)
+		if val.isExpired(s.now()) {
+			s.store.delete(string(key))
+		} else {
+			fmt.Fprintf(&buf, "VALUE %s %d %d\r\n%s\r\n", key, val.flags, len(val.data), val.data)
+		}
 	}
 
 	buf.WriteString("END\r\n")
@@ -159,10 +173,15 @@ func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd setCommand) erro
 	}
 	data := dataWithCrlf[:len(dataWithCrlf)-2]
 
+	var expiredAt time.Time
+	if cmd.expireTimeSec != 0 {
+		expiredAt = s.now().Add(time.Duration(cmd.expireTimeSec) * time.Second)
+	}
+
 	val := value{
-		data:          data,
-		flags:         cmd.flags,
-		expireTimeSec: cmd.expireTimeSec,
+		data:      data,
+		flags:     cmd.flags,
+		expiredAt: expiredAt,
 	}
 
 	s.store.set(cmd.key, val)
@@ -189,9 +208,17 @@ type setCommand struct {
 }
 
 type value struct {
-	data          []byte
-	flags         uint16
-	expireTimeSec int
+	data      []byte
+	flags     uint16
+	expiredAt time.Time
+}
+
+func (v value) isExpired(t time.Time) bool {
+	if v.expiredAt.IsZero() {
+		return false
+	}
+
+	return v.expiredAt.Before(t)
 }
 
 var errInvalidCommandLine = errors.New("invalid command line")
