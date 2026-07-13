@@ -37,10 +37,7 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	server := &server{
-		logger: logger,
-		store:  newConcurrentMap[string, value](),
-	}
+	server := newServer(logger)
 
 	addr := fmt.Sprintf(":%d", *port)
 

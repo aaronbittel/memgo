@@ -76,13 +76,96 @@ func TestSetExpiry(t *testing.T) {
 
 		ts.requireKeyMissing(t, "test")
 	})
+
+	t.Run("zero", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 0 5\r\nhello\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		want := value{data: []byte("hello")}
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
+		ts.requireStoredValue(t, "test", want)
+
+		ts.now = func() time.Time {
+			return fixedNow().AddDate(10, 0, 0)
+		}
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
+		ts.requireStoredValue(t, "test", want)
+	})
+
+	t.Run("positive", func(t *testing.T) {
+		ts := newTestServer(t)
+		clock := newFakeClock(fixedNow())
+		ts.now = clock.Now
+
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 20 5\r\nhello\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		want := value{data: []byte("hello"), expiredAt: clock.Now().Add(20 * time.Second)}
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
+		ts.requireStoredValue(t, "test", want)
+
+		clock.Advance(5 * time.Second)
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
+		ts.requireStoredValue(t, "test", want)
+
+		clock.Advance(20 * time.Second)
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "END\r\n")
+
+		ts.requireKeyMissing(t, "test")
+	})
+
+	t.Run("lazy removal", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+		clock := newFakeClock(fixedNow())
+		ts.now = clock.Now
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 10 5\r\nhello\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\n")
+
+		clock.Advance(20 * time.Second)
+
+		want := value{
+			data:      []byte("hello"),
+			expiredAt: fixedNow().Add(10 * time.Second),
+		}
+		ts.requireStoredValue(t, "test", want)
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "END\r\n")
+		ts.requireKeyMissing(t, "test")
+	})
+}
+
+var fixedNow = func() time.Time {
+	return time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
 }
 
 func TestServerSet(t *testing.T) {
-	fixedNow := func() time.Time {
-		return time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
-	}
-
 	tests := []struct {
 		name         string
 		command      string

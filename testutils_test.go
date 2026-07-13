@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -149,4 +150,27 @@ func (tce *testClientE) send(s string) error {
 
 	_, err := io.WriteString(tce.conn, s)
 	return err
+}
+
+type fakeClock struct {
+	mu  sync.RWMutex
+	now time.Time
+}
+
+func newFakeClock(now time.Time) *fakeClock {
+	return &fakeClock{now: now}
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.now
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.now = c.now.Add(d)
 }
