@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -84,7 +85,7 @@ func (ts *testServer) serve(t *testing.T) {
 
 		select {
 		case err := <-ts.serveErr:
-			if err != nil {
+			if err != nil && !errors.Is(err, net.ErrClosed) {
 				t.Errorf("server exited with error: %v", err)
 			}
 		case <-time.After(time.Second):

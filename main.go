@@ -39,26 +39,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	select {}
+	logger.Info("server closed")
 }
 
 func (s *server) Serve(ln net.Listener) error {
-	conn, err := ln.Accept()
-	if err != nil {
-		s.logger.Error("accepting connection", "err", err)
-		return err
-	}
-
-	s.logger.Info("connection received", "addr", conn.RemoteAddr())
-
-	go func() {
-		if err := s.handleConnection(conn); err != nil {
-			s.logger.Error("handling connection", "remote_addr", conn.RemoteAddr(), "err", err)
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			s.logger.Error("accepting connection", "err", err)
+			return err
 		}
-	}()
 
-	s.logger.Info("server closing")
-	return nil
+		s.logger.Info("connection received", "addr", conn.RemoteAddr())
+
+		go func() {
+			if err := s.handleConnection(conn); err != nil {
+				s.logger.Error("handling connection", "remote_addr", conn.RemoteAddr(), "err", err)
+			}
+		}()
+	}
 }
 
 func (s *server) ListenAndServe(addr string) error {
@@ -77,18 +76,28 @@ func (s *server) ListenAndServe(addr string) error {
 func (s *server) handleConnection(conn net.Conn) error {
 	defer conn.Close()
 
-	br := bufio.NewReader(conn)
-	if err := s.handleCommand(conn, br); err != nil {
-		return err
-	}
+	var (
+		br  = bufio.NewReader(conn)
+		err error
+	)
 
-	return nil
+	for {
+		if err = s.handleCommand(conn, br); err != nil {
+			switch {
+			case errors.Is(err, io.EOF):
+				s.logger.Info("client disconnected", "addr", conn.RemoteAddr())
+				return nil
+			default:
+				return fmt.Errorf("handle command: %v", err)
+			}
+		}
+	}
 }
 
 func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 	commandLine, err := readCommandLine(br)
 	if err != nil {
-		return fmt.Errorf("%w: %v", errInvalidCommandLine, err)
+		return fmt.Errorf("%w: %w", errInvalidCommandLine, err)
 	}
 
 	kind, commandLine, err := parseCmdKind(commandLine)
@@ -133,7 +142,12 @@ func (s *server) handleGet(conn net.Conn, key []byte) error {
 func readCommandLine(br *bufio.Reader) ([]byte, error) {
 	commandLine, err := br.ReadSlice('\n')
 	if err != nil {
-		return nil, err
+		switch {
+		case errors.Is(err, io.EOF) && len(commandLine) == 0:
+			return nil, io.EOF
+		default:
+			return nil, fmt.Errorf("incomplete command line: %w", err)
+		}
 	}
 
 	if !bytes.HasSuffix(commandLine, []byte("\r\n")) {
