@@ -12,35 +12,107 @@ import (
 )
 
 func TestServerSettingValue(t *testing.T) {
-	const addr = ":9999"
-
 	server := server{
 		logger: slog.New(slog.DiscardHandler),
 		store:  make(map[string]value),
 	}
 
-	go server.ListenAndServe(addr)
-	time.Sleep(50 * time.Millisecond)
-
-	conn, err := net.Dial("tcp", addr)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
+	defer ln.Close()
+
+	serveErr := make(chan error, 1)
+
+	go func() {
+		serveErr <- server.Serve(ln)
+	}()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
+	require.NoError(t, conn.SetDeadline(time.Now().Add(time.Second)))
 	defer conn.Close()
 
-	conn.Write([]byte("set test 0 0 4\r\n1234\r\n"))
-
-	time.Sleep(50 * time.Millisecond)
-
-	want := value{data: []byte("1234")}
-
-	got, ok := server.store["test"]
-	require.True(t, ok, "expected store to contain key 'test'")
-	require.Equal(t, want, got)
+	_, err = io.WriteString(conn, "set test 0 0 4\r\n1234\r\n")
+	require.NoError(t, err)
 
 	wantResponse := "STORED\r\n"
 	buf := make([]byte, len(wantResponse))
 	_, err = io.ReadFull(conn, buf)
 	require.NoError(t, err)
-	assert.Equal(t, wantResponse, string(buf))
+	require.Equal(t, wantResponse, string(buf))
+
+	want := value{data: []byte("1234")}
+	got, ok := server.store["test"]
+	require.True(t, ok, "expected store to contain key 'test'")
+	require.Equal(t, want, got)
+
+	require.NoError(t, <-serveErr)
+}
+
+func TestServerRetrievingValue(t *testing.T) {
+	server := server{
+		logger: slog.New(slog.DiscardHandler),
+		store: map[string]value{
+			"test": value{data: []byte("hello, world!")},
+		},
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- server.Serve(ln)
+	}()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	_, err = io.WriteString(conn, "get test\r\n")
+	require.NoError(t, err)
+
+	want := "VALUE hello, world! 0 13\r\n"
+	buf := make([]byte, len(want))
+	_, err = io.ReadFull(conn, buf)
+	require.NoError(t, err)
+
+	assert.Equal(t, want, string(buf))
+
+	require.NoError(t, <-serveErr)
+}
+
+func TestServerGetMissingValue(t *testing.T) {
+	server := server{
+		logger: slog.New(slog.DiscardHandler),
+		store:  make(map[string]value),
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- server.Serve(ln)
+	}()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	_, err = io.WriteString(conn, "get missing\r\n")
+	require.NoError(t, err)
+
+	want := "END\r\n"
+	buf := make([]byte, len(want))
+	_, err = io.ReadFull(conn, buf)
+	require.NoError(t, err)
+
+	assert.Equal(t, want, string(buf))
+
+	require.NoError(t, <-serveErr)
 }
 
 func TestParseSetCommandLine(t *testing.T) {

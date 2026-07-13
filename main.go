@@ -42,16 +42,7 @@ func main() {
 	select {}
 }
 
-func (s *server) ListenAndServe(addr string) error {
-	s.logger.Info("server starting", "addr", addr)
-
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		s.logger.Error("listening", "addr", addr, "err", err)
-		return err
-	}
-	defer ln.Close()
-
+func (s *server) Serve(ln net.Listener) error {
 	conn, err := ln.Accept()
 	if err != nil {
 		s.logger.Error("accepting connection", "err", err)
@@ -66,7 +57,21 @@ func (s *server) ListenAndServe(addr string) error {
 		}
 	}()
 
+	s.logger.Info("server closing")
 	return nil
+}
+
+func (s *server) ListenAndServe(addr string) error {
+	s.logger.Info("server starting", "addr", addr)
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		s.logger.Error("listening", "addr", addr, "err", err)
+		return err
+	}
+	defer ln.Close()
+
+	return s.Serve(ln)
 }
 
 func (s *server) handleConnection(conn net.Conn) error {
@@ -98,9 +103,31 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 			return err
 		}
 		return s.handleSet(conn, br, cmd)
+	case commandGet:
+		return s.handleGet(conn, commandLine)
 	default:
 		return nil
 	}
+}
+
+func (s *server) handleGet(conn net.Conn, key []byte) error {
+	val, ok := s.store[string(key)]
+	if !ok {
+		if _, err := io.WriteString(conn, "END\r\n"); err != nil {
+			return err
+		}
+	} else {
+		if _, err := io.WriteString(conn, "VALUE "); err != nil {
+			return err
+		}
+		if _, err := conn.Write(val.data); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(conn, " %d %d\r\n", val.flags, len(val.data)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func readCommandLine(br *bufio.Reader) ([]byte, error) {
@@ -140,6 +167,7 @@ type commandKind string
 
 const (
 	commandSet commandKind = "set"
+	commandGet commandKind = "get"
 )
 
 type setCommand struct {
@@ -222,6 +250,8 @@ func parseCommandKind(name []byte) (commandKind, error) {
 	switch {
 	case bytes.Equal(name, []byte(commandSet)):
 		return commandSet, nil
+	case bytes.Equal(name, []byte(commandGet)):
+		return commandGet, nil
 	default:
 		return "", fmt.Errorf("invalid command name %q", name)
 	}
