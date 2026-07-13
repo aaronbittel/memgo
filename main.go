@@ -120,23 +120,15 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 }
 
 func (s *server) handleGet(conn net.Conn, key []byte) error {
-	val, ok := s.store[string(key)]
-	if !ok {
-		if _, err := io.WriteString(conn, "END\r\n"); err != nil {
-			return err
-		}
-	} else {
-		if _, err := io.WriteString(conn, "VALUE "); err != nil {
-			return err
-		}
-		if _, err := conn.Write(val.data); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(conn, " %d %d\r\n", val.flags, len(val.data)); err != nil {
-			return err
-		}
+	var buf bytes.Buffer
+
+	if val, ok := s.store[string(key)]; ok {
+		fmt.Fprintf(&buf, "VALUE %s %d %d\r\n%s\r\n", key, val.flags, len(val.data), val.data)
 	}
-	return nil
+
+	buf.WriteString("END\r\n")
+	_, err := buf.WriteTo(conn)
+	return err
 }
 
 func readCommandLine(br *bufio.Reader) ([]byte, error) {

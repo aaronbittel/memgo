@@ -7,6 +7,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestServerSetAndGet(t *testing.T) {
+	ts := newTestServer(t)
+	ts.serve(t)
+
+	tc := newTestClient(t, ts.addr())
+
+	tc.send(t, "get test\r\n")
+	tc.assertReadEquals(t, "END\r\n")
+
+	tc.send(t, "set test 0 0 5\r\nhello\r\n")
+	tc.assertReadEquals(t, "STORED\r\n")
+
+	tc.send(t, "get test\r\n")
+	tc.assertReadEquals(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
+}
+
 func TestServerSettingValue(t *testing.T) {
 	ts := newTestServer(t)
 	ts.serve(t)
@@ -31,7 +47,7 @@ func TestServerRetrievingValue(t *testing.T) {
 	tc := newTestClient(t, ts.addr())
 
 	tc.send(t, "get test\r\n")
-	tc.assertReadEquals(t, "VALUE hello, world! 0 13\r\n")
+	tc.assertReadEquals(t, "VALUE test 0 13\r\nhello, world!\r\nEND\r\n")
 }
 
 func TestServerGetMissingValue(t *testing.T) {

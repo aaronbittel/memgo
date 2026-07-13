@@ -53,7 +53,7 @@ func (tc testClient) send(t *testing.T, s string) {
 func (tc testClient) assertReadEquals(t *testing.T, want string) {
 	t.Helper()
 
-	require.NoError(t, tc.conn.SetWriteDeadline(time.Now().Add(time.Second)))
+	require.NoError(t, tc.conn.SetReadDeadline(time.Now().Add(time.Second)))
 
 	buf := make([]byte, len(want))
 	n, err := io.ReadFull(tc.conn, buf)
