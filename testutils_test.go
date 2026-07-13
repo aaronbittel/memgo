@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -59,6 +60,15 @@ func (tc *testClient) assertReadEquals(t *testing.T, want string) {
 	n, err := io.ReadFull(tc.conn, buf)
 	require.NoErrorf(t, err, "\nexpected:\n%q\ngot:\n%q", want, buf[:n])
 	require.Equal(t, want, string(buf))
+}
+
+func (tc *testClient) assertNoResponse(t *testing.T) {
+	t.Helper()
+
+	require.NoError(t, tc.conn.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
+	buf := make([]byte, 1)
+	_, err := tc.conn.Read(buf)
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }
 
 type testServer struct {

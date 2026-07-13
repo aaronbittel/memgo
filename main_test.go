@@ -91,6 +91,29 @@ func TestServerSettingValue(t *testing.T) {
 	require.Equal(t, want, got)
 }
 
+func TestServerNoReply(t *testing.T) {
+	ts := newTestServer(t)
+	ts.serve(t)
+
+	tc := newTestClient(t, ts.addr())
+
+	tc.send(t, "set test 0 0 5 noreply\r\nhello\r\n")
+	tc.assertNoResponse(t)
+}
+
+func TestServerSetAndGetWithFlags(t *testing.T) {
+	ts := newTestServer(t)
+	ts.serve(t)
+
+	tc := newTestClient(t, ts.addr())
+
+	tc.send(t, "set test 10 0 5\r\nhello\r\n")
+	tc.assertReadEquals(t, "STORED\r\n")
+
+	tc.send(t, "get test\r\n")
+	tc.assertReadEquals(t, "VALUE test 10 5\r\nhello\r\nEND\r\n")
+}
+
 func TestServerRetrievingValue(t *testing.T) {
 	ts := newTestServer(t)
 	ts.store.set("test", value{data: []byte("hello, world!")})

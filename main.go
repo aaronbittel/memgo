@@ -167,7 +167,9 @@ func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd setCommand) erro
 
 	s.store.set(cmd.key, val)
 
-	conn.Write([]byte("STORED\r\n"))
+	if !cmd.omitReply {
+		conn.Write([]byte("STORED\r\n"))
+	}
 	return nil
 }
 
