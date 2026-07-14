@@ -135,9 +135,9 @@ func TestSetExpiry(t *testing.T) {
 
 	t.Run("lazy removal", func(t *testing.T) {
 		ts := newTestServer(t)
-		ts.serve(t)
 		clock := newFakeClock(fixedNow())
 		ts.now = clock.Now
+		ts.serve(t)
 
 		tc := newTestClient(t, ts.addr())
 
@@ -145,7 +145,7 @@ func TestSetExpiry(t *testing.T) {
 		tc.requireResponse(t, "STORED\r\n")
 
 		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\n")
+		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
 
 		clock.Advance(20 * time.Second)
 
