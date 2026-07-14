@@ -350,12 +350,12 @@ func TestParseSetCommandLine(t *testing.T) {
 	validTests := []struct {
 		name  string
 		input string
-		want  setCommand
+		want  storeCommand
 	}{
 		{
 			name:  "valid set command",
 			input: "test 0 0 4",
-			want: setCommand{
+			want: storeCommand{
 				key:     "test",
 				dataLen: 4,
 			},
@@ -363,7 +363,7 @@ func TestParseSetCommandLine(t *testing.T) {
 		{
 			name:  "command with no reply set",
 			input: "test 127 5124 4 noreply",
-			want: setCommand{
+			want: storeCommand{
 				key:           "test",
 				flags:         127,
 				expireTimeSec: 5124,
@@ -374,13 +374,13 @@ func TestParseSetCommandLine(t *testing.T) {
 		{
 			name:  "empty data",
 			input: "test 0 0 0",
-			want:  setCommand{key: "test"},
+			want:  storeCommand{key: "test"},
 		},
 	}
 
 	for _, tt := range validTests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseSetCommandLine([]byte(tt.input))
+			got, err := parseStoreCommandLine([]byte(tt.input))
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.want, got)
