@@ -208,8 +208,10 @@ func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 	}
 
 	if val, exists := s.store.get(cmd.key); exists && !val.isExpired(s.now()) {
-		if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
-			return err
+		if !cmd.omitReply {
+			if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -238,8 +240,10 @@ func (s *server) handleReplace(conn net.Conn, br *bufio.Reader, cmd storeCommand
 	}
 
 	if val, ok := s.store.get(cmd.key); !ok || val.isExpired(s.now()) {
-		if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
-			return err
+		if !cmd.omitReply {
+			if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
