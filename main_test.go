@@ -61,6 +61,69 @@ func TestConcurrent(t *testing.T) {
 	}
 }
 
+func TestReplace(t *testing.T) {
+	t.Run("item does not exist", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "replace test 0 0 5\r\nhello\r\n")
+		tc.requireResponse(t, "NOT_STORED\r\n")
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "END\r\n")
+	})
+
+	t.Run("item exists", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 0 9\r\nold value\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "replace test 0 0 9\r\nnew value\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 9\r\nnew value\r\nEND\r\n")
+	})
+
+	t.Run("does not update if expired", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 -1 9\r\nold value\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "replace test 0 0 9\r\nnew value\r\n")
+		tc.requireResponse(t, "NOT_STORED\r\n")
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "END\r\n")
+	})
+
+	t.Run("noreply", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 0 9\r\nold value\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "replace test 0 0 9 noreply\r\nnew value\r\n")
+		tc.requireNoResponse(t)
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 9\r\nnew value\r\nEND\r\n")
+	})
+}
+
 func TestAdd(t *testing.T) {
 	t.Run("item does not exist", func(t *testing.T) {
 		ts := newTestServer(t)

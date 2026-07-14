@@ -127,6 +127,12 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 			return err
 		}
 		return s.handleAdd(conn, br, cmd)
+	case commandReplace:
+		cmd, err := parseStoreCommandLine(commandLine)
+		if err != nil {
+			return err
+		}
+		return s.handleReplace(conn, br, cmd)
 	default:
 		return fmt.Errorf("illegal kind %q", kind)
 	}
@@ -167,24 +173,15 @@ func readCommandLine(br *bufio.Reader) ([]byte, error) {
 }
 
 func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
-	dataWithCrlf := make([]byte, cmd.dataLen+2) // crlf
-	if _, err := io.ReadFull(br, dataWithCrlf); err != nil {
+	data, err := readDataBlock(br, cmd.dataLen)
+	if err != nil {
 		return err
-	}
-	if !bytes.HasSuffix(dataWithCrlf, []byte("\r\n")) {
-		return errors.New("set data block missing \"\\r\\n\"")
-	}
-	data := dataWithCrlf[:len(dataWithCrlf)-2]
-
-	var expiredAt time.Time
-	if cmd.expireTimeSec != 0 {
-		expiredAt = s.now().Add(time.Duration(cmd.expireTimeSec) * time.Second)
 	}
 
 	val := value{
 		data:      data,
 		flags:     cmd.flags,
-		expiredAt: expiredAt,
+		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
 	}
 
 	s.store.set(cmd.key, val)
@@ -199,14 +196,10 @@ func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 }
 
 func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
-	dataWithCrlf := make([]byte, cmd.dataLen+2) // crlf
-	if _, err := io.ReadFull(br, dataWithCrlf); err != nil {
+	data, err := readDataBlock(br, cmd.dataLen)
+	if err != nil {
 		return err
 	}
-	if !bytes.HasSuffix(dataWithCrlf, []byte("\r\n")) {
-		return errors.New("set data block missing \"\\r\\n\"")
-	}
-	data := dataWithCrlf[:len(dataWithCrlf)-2]
 
 	if val, exists := s.store.get(cmd.key); exists && !val.isExpired(s.now()) {
 		if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
@@ -215,15 +208,10 @@ func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 		return nil
 	}
 
-	var expiredAt time.Time
-	if cmd.expireTimeSec != 0 {
-		expiredAt = s.now().Add(time.Duration(cmd.expireTimeSec) * time.Second)
-	}
-
 	val := value{
 		data:      data,
 		flags:     cmd.flags,
-		expiredAt: expiredAt,
+		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
 	}
 
 	s.store.set(cmd.key, val)
@@ -237,12 +225,62 @@ func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 	return nil
 }
 
+func (s *server) handleReplace(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
+	data, err := readDataBlock(br, cmd.dataLen)
+	if err != nil {
+		return err
+	}
+
+	if val, ok := s.store.get(cmd.key); !ok || val.isExpired(s.now()) {
+		if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	val := value{
+		data:      data,
+		flags:     cmd.flags,
+		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
+	}
+
+	s.store.set(cmd.key, val)
+
+	if !cmd.omitReply {
+		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func readDataBlock(br *bufio.Reader, dataLen int) ([]byte, error) {
+	dataWithCrlf := make([]byte, dataLen+2) // crlf
+	if _, err := io.ReadFull(br, dataWithCrlf); err != nil {
+		return nil, err
+	}
+	if !bytes.HasSuffix(dataWithCrlf, []byte("\r\n")) {
+		return nil, errors.New("data block missing \"\\r\\n\"")
+	}
+	return dataWithCrlf[:len(dataWithCrlf)-2], nil
+}
+
+func (s *server) calculateExpiryTime(expireTimeSec int) time.Time {
+	var expiredAt time.Time
+	if expireTimeSec != 0 {
+		expiredAt = s.now().Add(time.Duration(expireTimeSec) * time.Second)
+	}
+	return expiredAt
+}
+
 type commandKind string
 
 const (
-	commandSet commandKind = "set"
-	commandGet commandKind = "get"
-	commandAdd commandKind = "add"
+	commandSet     commandKind = "set"
+	commandGet     commandKind = "get"
+	commandAdd     commandKind = "add"
+	commandReplace commandKind = "replace"
 )
 
 type storeCommand struct {
@@ -337,6 +375,8 @@ func parseCommandKind(name []byte) (commandKind, error) {
 		return commandGet, nil
 	case bytes.Equal(name, []byte(commandAdd)):
 		return commandAdd, nil
+	case bytes.Equal(name, []byte(commandReplace)):
+		return commandReplace, nil
 	default:
 		return "", fmt.Errorf("invalid command name %q", name)
 	}
