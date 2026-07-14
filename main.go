@@ -121,8 +121,14 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 		return s.handleSet(conn, br, cmd)
 	case commandGet:
 		return s.handleGet(conn, commandLine)
+	case commandAdd:
+		cmd, err := parseAddCommandLine(commandLine)
+		if err != nil {
+			return err
+		}
+		return s.handleAdd(conn, br, cmd)
 	default:
-		return nil
+		return fmt.Errorf("illegal kind %q", kind)
 	}
 }
 
@@ -184,8 +190,50 @@ func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd setCommand) erro
 	s.store.set(cmd.key, val)
 
 	if !cmd.omitReply {
-		conn.Write([]byte("STORED\r\n"))
+		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+			return err
+		}
 	}
+
+	return nil
+}
+
+func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd addCommand) error {
+	dataWithCrlf := make([]byte, cmd.dataLen+2) // crlf
+	if _, err := io.ReadFull(br, dataWithCrlf); err != nil {
+		return err
+	}
+	if !bytes.HasSuffix(dataWithCrlf, []byte("\r\n")) {
+		return errors.New("set data block missing \"\\r\\n\"")
+	}
+	data := dataWithCrlf[:len(dataWithCrlf)-2]
+
+	if val, exists := s.store.get(cmd.key); exists && !val.isExpired(s.now()) {
+		if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	var expiredAt time.Time
+	if cmd.expireTimeSec != 0 {
+		expiredAt = s.now().Add(time.Duration(cmd.expireTimeSec) * time.Second)
+	}
+
+	val := value{
+		data:      data,
+		flags:     cmd.flags,
+		expiredAt: expiredAt,
+	}
+
+	s.store.set(cmd.key, val)
+
+	if !cmd.omitReply {
+		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -194,6 +242,7 @@ type commandKind string
 const (
 	commandSet commandKind = "set"
 	commandGet commandKind = "get"
+	commandAdd commandKind = "add"
 )
 
 type setCommand struct {
@@ -234,12 +283,12 @@ func parseCmdKind(commandLine []byte) (kind commandKind, rest []byte, err error)
 }
 
 func parseSetCommandLine(commandLine []byte) (setCommand, error) {
-	key, rest, found := bytes.Cut(commandLine, []byte{' '})
+	key, commandLine, found := bytes.Cut(commandLine, []byte{' '})
 	if !found {
 		return setCommand{}, errors.New("missing ' ' after key")
 	}
 
-	flagsBytes, rest, found := bytes.Cut(rest, []byte{' '})
+	flagsBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
 	if !found {
 		return setCommand{}, errors.New("missing ' ' after flags")
 	}
@@ -248,7 +297,7 @@ func parseSetCommandLine(commandLine []byte) (setCommand, error) {
 		return setCommand{}, fmt.Errorf("could not parse flags: %q", flagsBytes)
 	}
 
-	expireTimeBytes, rest, found := bytes.Cut(rest, []byte{' '})
+	expireTimeBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
 	if !found {
 		return setCommand{}, errors.New("missing ' ' after expiration time")
 	}
@@ -257,7 +306,7 @@ func parseSetCommandLine(commandLine []byte) (setCommand, error) {
 		return setCommand{}, errors.New("expiration time in seconds must be an interger")
 	}
 
-	dataLenBytes, rest, expectingNoReplyFlag := bytes.Cut(rest, []byte{' '})
+	dataLenBytes, commandLine, expectingNoReplyFlag := bytes.Cut(commandLine, []byte{' '})
 	dataLen, err := strconv.Atoi(string(dataLenBytes))
 	if err != nil {
 		return setCommand{}, errors.New("data length must be an interger")
@@ -265,8 +314,8 @@ func parseSetCommandLine(commandLine []byte) (setCommand, error) {
 
 	var omitReply bool
 	if expectingNoReplyFlag {
-		if !bytes.Equal(rest, []byte("noreply")) {
-			return setCommand{}, fmt.Errorf("expecting 'noreply' got %q", rest)
+		if !bytes.Equal(commandLine, []byte("noreply")) {
+			return setCommand{}, fmt.Errorf("expecting 'noreply' got %q", commandLine)
 		}
 		omitReply = true
 	}
@@ -280,12 +329,69 @@ func parseSetCommandLine(commandLine []byte) (setCommand, error) {
 	}, nil
 }
 
+type addCommand struct {
+	key           string
+	flags         uint16
+	expireTimeSec int
+	dataLen       int
+	omitReply     bool
+}
+
+func parseAddCommandLine(commandLine []byte) (addCommand, error) {
+	keyBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
+	if !found {
+		return addCommand{}, errors.New("missing ' ' after key")
+	}
+
+	flagsBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
+	if !found {
+		return addCommand{}, errors.New("missing ' ' after flags")
+	}
+	flagU64, err := strconv.ParseUint(string(flagsBytes), 10, 16)
+	if err != nil {
+		return addCommand{}, fmt.Errorf("could not parse flags: %q", flagsBytes)
+	}
+
+	expireTimeBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
+	if !found {
+		return addCommand{}, errors.New("missing ' ' after expiration time")
+	}
+	expireTimeSec, err := strconv.Atoi(string(expireTimeBytes))
+	if err != nil {
+		return addCommand{}, errors.New("expiration time in seconds must be an interger")
+	}
+
+	dataLenBytes, commandLine, expectingNoReplyFlag := bytes.Cut(commandLine, []byte{' '})
+	dataLen, err := strconv.Atoi(string(dataLenBytes))
+	if err != nil {
+		return addCommand{}, errors.New("data length must be an interger")
+	}
+
+	var omitReply bool
+	if expectingNoReplyFlag {
+		if !bytes.Equal(commandLine, []byte("noreply")) {
+			return addCommand{}, fmt.Errorf("expecting 'noreply' got %q", commandLine)
+		}
+		omitReply = true
+	}
+
+	return addCommand{
+		key:           string(keyBytes),
+		flags:         uint16(flagU64),
+		expireTimeSec: expireTimeSec,
+		dataLen:       dataLen,
+		omitReply:     omitReply,
+	}, nil
+}
+
 func parseCommandKind(name []byte) (commandKind, error) {
 	switch {
 	case bytes.Equal(name, []byte(commandSet)):
 		return commandSet, nil
 	case bytes.Equal(name, []byte(commandGet)):
 		return commandGet, nil
+	case bytes.Equal(name, []byte(commandAdd)):
+		return commandAdd, nil
 	default:
 		return "", fmt.Errorf("invalid command name %q", name)
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestServerConcurrent(t *testing.T) {
+func TestConcurrent(t *testing.T) {
 	ts := newTestServer(t)
 	ts.store.set("counter", value{data: []byte("0")})
 	ts.serve(t)
@@ -59,6 +59,66 @@ func TestServerConcurrent(t *testing.T) {
 	for err := range errs {
 		t.Error(err)
 	}
+}
+
+func TestAdd(t *testing.T) {
+	t.Run("item does not exist", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "add test 0 0 5\r\nhello\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
+	})
+
+	t.Run("item already exists", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 0 9\r\nold value\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "add test 0 0 9\r\nnew value\r\n")
+		tc.requireResponse(t, "NOT_STORED\r\n")
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 9\r\nold value\r\nEND\r\n")
+	})
+
+	t.Run("store value if expired", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 -1 9\r\nold value\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "add test 0 0 9\r\nnew value\r\n")
+		tc.requireResponse(t, "STORED\r\n")
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 9\r\nnew value\r\nEND\r\n")
+	})
+
+	t.Run("noreply", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "add test 0 0 5 noreply\r\nhello\r\n")
+		tc.requireNoResponse(t)
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
+	})
 }
 
 func TestSetExpiry(t *testing.T) {
@@ -165,7 +225,7 @@ var fixedNow = func() time.Time {
 	return time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
 }
 
-func TestServerSet(t *testing.T) {
+func TestSet(t *testing.T) {
 	tests := []struct {
 		name         string
 		command      string
@@ -223,7 +283,7 @@ func TestServerSet(t *testing.T) {
 	})
 }
 
-func TestServerSetAndGet(t *testing.T) {
+func TestSetAndGet(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
@@ -262,7 +322,7 @@ func TestServerSetAndGet(t *testing.T) {
 	}
 }
 
-func TestServerGet(t *testing.T) {
+func TestGet(t *testing.T) {
 	t.Run("value", func(t *testing.T) {
 		ts := newTestServer(t)
 		ts.store.set("test", value{data: []byte("hello, world!")})
