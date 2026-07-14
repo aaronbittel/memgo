@@ -69,10 +69,10 @@ func TestReplace(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "replace test 0 0 5\r\nhello\r\n")
-		tc.requireResponse(t, "NOT_STORED\r\n")
+		tc.requireNotStored(t)
 
 		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "END\r\n")
+		tc.requireEnd(t)
 	})
 
 	t.Run("item exists", func(t *testing.T) {
@@ -82,10 +82,10 @@ func TestReplace(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 0 9\r\nold value\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "replace test 0 0 9\r\nnew value\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "get test\r\n")
 		tc.requireResponse(t, "VALUE test 0 9\r\nnew value\r\nEND\r\n")
@@ -98,13 +98,13 @@ func TestReplace(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 -1 9\r\nold value\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "replace test 0 0 9\r\nnew value\r\n")
-		tc.requireResponse(t, "NOT_STORED\r\n")
+		tc.requireNotStored(t)
 
 		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "END\r\n")
+		tc.requireEnd(t)
 	})
 
 	t.Run("noreply", func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestReplace(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 0 9\r\nold value\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "replace test 0 0 9 noreply\r\nnew value\r\n")
 		tc.requireNoResponse(t)
@@ -132,7 +132,7 @@ func TestAdd(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "add test 0 0 5\r\nhello\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "get test\r\n")
 		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
@@ -145,10 +145,10 @@ func TestAdd(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 0 9\r\nold value\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "add test 0 0 9\r\nnew value\r\n")
-		tc.requireResponse(t, "NOT_STORED\r\n")
+		tc.requireNotStored(t)
 
 		tc.send(t, "get test\r\n")
 		tc.requireResponse(t, "VALUE test 0 9\r\nold value\r\nEND\r\n")
@@ -161,10 +161,10 @@ func TestAdd(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 -1 9\r\nold value\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "add test 0 0 9\r\nnew value\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "get test\r\n")
 		tc.requireResponse(t, "VALUE test 0 9\r\nnew value\r\nEND\r\n")
@@ -192,10 +192,10 @@ func TestSetExpiry(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 -1 5\r\nhello\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "END\r\n")
+		tc.requireEnd(t)
 
 		ts.requireKeyMissing(t, "test")
 	})
@@ -207,7 +207,7 @@ func TestSetExpiry(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 0 5\r\nhello\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		want := value{data: []byte("hello")}
 
@@ -234,7 +234,7 @@ func TestSetExpiry(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 20 5\r\nhello\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		want := value{data: []byte("hello"), expiredAt: clock.Now().Add(20 * time.Second)}
 
@@ -251,7 +251,7 @@ func TestSetExpiry(t *testing.T) {
 		clock.Advance(20 * time.Second)
 
 		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "END\r\n")
+		tc.requireEnd(t)
 
 		ts.requireKeyMissing(t, "test")
 	})
@@ -265,7 +265,7 @@ func TestSetExpiry(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "set test 0 10 5\r\nhello\r\n")
-		tc.requireResponse(t, "STORED\r\n")
+		tc.requireStored(t)
 
 		tc.send(t, "get test\r\n")
 		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
@@ -279,7 +279,7 @@ func TestSetExpiry(t *testing.T) {
 		ts.requireStoredValue(t, "test", want)
 
 		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "END\r\n")
+		tc.requireEnd(t)
 		ts.requireKeyMissing(t, "test")
 	})
 }
@@ -328,7 +328,7 @@ func TestSet(t *testing.T) {
 			tc := newTestClient(t, ts.addr())
 
 			tc.send(t, tt.command)
-			tc.requireResponse(t, "STORED\r\n")
+			tc.requireStored(t)
 
 			ts.requireStoredValue(t, "test", tt.want)
 		})
@@ -377,7 +377,7 @@ func TestSetAndGet(t *testing.T) {
 			tc := newTestClient(t, ts.addr())
 
 			tc.send(t, tt.command)
-			tc.requireResponse(t, "STORED\r\n")
+			tc.requireStored(t)
 
 			tc.send(t, "get test\r\n")
 			tc.requireResponse(t, tt.want)
@@ -405,11 +405,12 @@ func TestGet(t *testing.T) {
 		tc := newTestClient(t, ts.addr())
 
 		tc.send(t, "get missing\r\n")
-		tc.requireResponse(t, "END\r\n")
+		tc.requireEnd(t)
+	})
 	})
 }
 
-func TestParseSetCommandLine(t *testing.T) {
+func TestParseStoreCommandLine(t *testing.T) {
 	validTests := []struct {
 		name  string
 		input string
