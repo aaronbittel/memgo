@@ -166,24 +166,6 @@ func (s *server) handleGet(conn net.Conn, key []byte) error {
 	return err
 }
 
-func readCommandLine(br *bufio.Reader) ([]byte, error) {
-	commandLine, err := br.ReadSlice('\n')
-	if err != nil {
-		switch {
-		case errors.Is(err, io.EOF) && len(commandLine) == 0:
-			return nil, io.EOF
-		default:
-			return nil, fmt.Errorf("incomplete command line: %w", err)
-		}
-	}
-
-	if !bytes.HasSuffix(commandLine, []byte("\r\n")) {
-		return nil, errors.New("command line missing \"\\r\\n\"")
-	}
-	commandLine = commandLine[:len(commandLine)-2]
-	return commandLine, nil
-}
-
 func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
 	data, err := readDataBlock(br, cmd.dataLen)
 	if err != nil {
@@ -344,6 +326,24 @@ func (s *server) calculateExpiryTime(expireTimeSec int) time.Time {
 		expiredAt = s.now().Add(time.Duration(expireTimeSec) * time.Second)
 	}
 	return expiredAt
+}
+
+func readCommandLine(br *bufio.Reader) ([]byte, error) {
+	commandLine, err := br.ReadSlice('\n')
+	if err != nil {
+		switch {
+		case errors.Is(err, io.EOF) && len(commandLine) == 0:
+			return nil, io.EOF
+		default:
+			return nil, fmt.Errorf("incomplete command line: %w", err)
+		}
+	}
+
+	if !bytes.HasSuffix(commandLine, []byte("\r\n")) {
+		return nil, errors.New("command line missing \"\\r\\n\"")
+	}
+	commandLine = commandLine[:len(commandLine)-2]
+	return commandLine, nil
 }
 
 type commandKind string
