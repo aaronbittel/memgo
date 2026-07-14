@@ -316,6 +316,11 @@ func TestSet(t *testing.T) {
 				expiredAt: fixedNow().Add(20 * time.Second),
 			},
 		},
+		{
+			name:    "crlf in value",
+			command: "set test 0 0 6\r\n12\r\n34\r\n",
+			want:    value{data: []byte("12\r\n34")},
+		},
 	}
 
 	for _, tt := range tests {
@@ -367,6 +372,11 @@ func TestSetAndGet(t *testing.T) {
 			command: "set test 0 20 5\r\nhello\r\n",
 			want:    "VALUE test 0 5\r\nhello\r\nEND\r\n",
 		},
+		{
+			name:    "value with crlf",
+			command: "set test 0 20 12\r\nhello\r\nworld\r\n",
+			want:    "VALUE test 0 12\r\nhello\r\nworld\r\nEND\r\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -407,6 +417,17 @@ func TestGet(t *testing.T) {
 		tc.send(t, "get missing\r\n")
 		tc.requireEnd(t)
 	})
+
+	t.Run("crlf in value", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.store.set("test", value{data: []byte("hello\r\nworld")})
+
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 12\r\nhello\r\nworld\r\nEND\r\n")
 	})
 }
 
