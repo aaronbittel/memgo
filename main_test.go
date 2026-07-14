@@ -61,6 +61,85 @@ func TestConcurrent(t *testing.T) {
 	}
 }
 
+func TestPrepend(t *testing.T) {
+	t.Run("item does not exist", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "prepend test 0 0 5\r\nhello\r\n")
+		tc.requireNotStored(t)
+
+		tc.send(t, "get test\r\n")
+		tc.requireEnd(t)
+	})
+
+	t.Run("item exists", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 0 5\r\nworld\r\n")
+		tc.requireStored(t)
+
+		tc.send(t, "prepend test 0 0 6\r\nhello \r\n")
+		tc.requireStored(t)
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 11\r\nhello world\r\nEND\r\n")
+	})
+
+	t.Run("expired item", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 -1 5\r\nworld\r\n")
+		tc.requireStored(t)
+
+		tc.send(t, "prepend test 0 0 6\r\nhello \r\n")
+		tc.requireNotStored(t)
+
+		tc.send(t, "get test\r\n")
+		tc.requireEnd(t)
+	})
+
+	t.Run("noreply: item exists", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 0 5\r\nworld\r\n")
+		tc.requireStored(t)
+
+		tc.send(t, "prepend test 0 0 6 noreply\r\nhello \r\n")
+		tc.requireNoResponse(t)
+
+		tc.send(t, "get test\r\n")
+		tc.requireResponse(t, "VALUE test 0 11\r\nhello world\r\nEND\r\n")
+	})
+
+	t.Run("noreply: item does not exists", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.serve(t)
+
+		tc := newTestClient(t, ts.addr())
+
+		tc.send(t, "set test 0 -1 5\r\nhello\r\n")
+		tc.requireStored(t)
+
+		tc.send(t, "prepend test 0 0 6 noreply\r\n world\r\n")
+		tc.requireNoResponse(t)
+
+		tc.send(t, "get test\r\n")
+		tc.requireEnd(t)
+	})
+}
+
 func TestAppend(t *testing.T) {
 	t.Run("item does not exist", func(t *testing.T) {
 		ts := newTestServer(t)

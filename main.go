@@ -139,6 +139,12 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 			return err
 		}
 		return s.handleAppend(conn, br, cmd)
+	case commandPrepend:
+		cmd, err := parseStoreCommandLine(commandLine)
+		if err != nil {
+			return err
+		}
+		return s.handlePrepend(conn, br, cmd)
 	default:
 		return fmt.Errorf("illegal kind %q", kind)
 	}
@@ -293,6 +299,34 @@ func (s *server) handleAppend(conn net.Conn, br *bufio.Reader, cmd storeCommand)
 	return nil
 }
 
+func (s *server) handlePrepend(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
+	data, err := readDataBlock(br, cmd.dataLen)
+	if err != nil {
+		return err
+	}
+
+	val, ok := s.store.get(cmd.key)
+	if !ok || val.isExpired(s.now()) {
+		if !cmd.omitReply {
+			if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	val.data = append(data, val.data...)
+	s.store.set(cmd.key, val)
+
+	if !cmd.omitReply {
+		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func readDataBlock(br *bufio.Reader, dataLen int) ([]byte, error) {
 	dataWithCrlf := make([]byte, dataLen+2) // crlf
 	if _, err := io.ReadFull(br, dataWithCrlf); err != nil {
@@ -320,6 +354,7 @@ const (
 	commandAdd     commandKind = "add"
 	commandReplace commandKind = "replace"
 	commandAppend  commandKind = "append"
+	commandPrepend commandKind = "prepend"
 )
 
 type storeCommand struct {
@@ -418,6 +453,8 @@ func parseCommandKind(name []byte) (commandKind, error) {
 		return commandReplace, nil
 	case bytes.Equal(name, []byte(commandAppend)):
 		return commandAppend, nil
+	case bytes.Equal(name, []byte(commandPrepend)):
+		return commandPrepend, nil
 	default:
 		return "", fmt.Errorf("invalid command name %q", name)
 	}
