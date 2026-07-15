@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -102,11 +103,11 @@ func (tc *testClient) requireResponse(t *testing.T, want string) {
 
 	var sb strings.Builder
 	for range strings.Count(want, "\n") {
-		sb.WriteString(tc.readLine(t))
+		line := tc.readLine(t)
+		sb.WriteString(line)
 	}
 
 	got := sb.String()
-
 	require.Equal(t, want, got)
 }
 
@@ -176,7 +177,9 @@ func newTestServer(t *testing.T) *testServer {
 func (ts *testServer) requireStoredValue(t *testing.T, key string, want value) {
 	t.Helper()
 
-	got, ok := ts.store.get(key)
+	ts.store.mu.Lock()
+	got, ok := ts.store.store[key]
+	ts.store.mu.Unlock()
 	require.True(t, ok, "expected store to contain key 'test'")
 	require.Equal(t, want, got)
 }
@@ -184,12 +187,15 @@ func (ts *testServer) requireStoredValue(t *testing.T, key string, want value) {
 func (ts *testServer) requireKeyMissing(t *testing.T, key string) {
 	t.Helper()
 
-	_, ok := ts.store.get(key)
+	ts.store.mu.Lock()
+	_, ok := ts.store.store[key]
+	ts.store.mu.Unlock()
 	require.Falsef(t, ok, "expected store not to contain key %q", key)
 }
 
 type testClientE struct {
 	conn net.Conn
+	r    *bufio.Reader
 }
 
 func newTestClientE(addr string) (*testClientE, error) {
@@ -198,7 +204,10 @@ func newTestClientE(addr string) (*testClientE, error) {
 		return nil, err
 	}
 
-	return &testClientE{conn: conn}, nil
+	return &testClientE{
+		conn: conn,
+		r:    bufio.NewReader(conn),
+	}, nil
 }
 
 func (tce *testClientE) send(s string) error {
@@ -209,6 +218,24 @@ func (tce *testClientE) send(s string) error {
 
 	_, err := io.WriteString(tce.conn, s)
 	return err
+}
+
+func (tce *testClientE) recv(want string) (string, error) {
+	if err := tce.conn.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
+		return "", err
+	}
+	defer tce.conn.SetWriteDeadline(time.Time{})
+
+	var sb strings.Builder
+	for range strings.Count(want, "\n") {
+		line, err := tce.r.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("reading failed: %v", err)
+		}
+		sb.WriteString(line)
+	}
+
+	return sb.String(), nil
 }
 
 type fakeClock struct {

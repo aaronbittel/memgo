@@ -20,14 +20,14 @@ type server struct {
 	logger *slog.Logger
 	now    func() time.Time
 
-	store *concurrentMap[string, value]
+	store *store
 }
 
 func newServer(logger *slog.Logger) *server {
 	return &server{
 		logger: logger,
 		now:    time.Now,
-		store:  newConcurrentMap[string, value](),
+		store:  newStore(),
 	}
 }
 
@@ -153,15 +153,12 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 func (s *server) handleGet(conn net.Conn, key []byte) error {
 	var buf bytes.Buffer
 
-	if val, ok := s.store.get(string(key)); ok {
-		if val.isExpired(s.now()) {
-			s.store.delete(string(key))
-		} else {
-			fmt.Fprintf(&buf, "VALUE %s %d %d\r\n%s\r\n", key, val.flags, len(val.data), val.data)
-		}
+	val, ok := s.store.get(string(key), s.now())
+	if ok {
+		fmt.Fprintf(&buf, "VALUE %s %d %d\r\n%s\r\n", key, val.flags, len(val.data), val.data)
 	}
-
 	buf.WriteString("END\r\n")
+
 	_, err := buf.WriteTo(conn)
 	return err
 }
@@ -195,25 +192,22 @@ func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 		return err
 	}
 
-	if val, exists := s.store.get(cmd.key); exists && !val.isExpired(s.now()) {
-		if !cmd.omitReply {
-			if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
 	val := value{
 		data:      data,
 		flags:     cmd.flags,
 		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
 	}
 
-	s.store.set(cmd.key, val)
+	var resp string
+
+	if s.store.add(cmd.key, val, s.now()) {
+		resp = "STORED\r\n"
+	} else {
+		resp = "NOT_STORED\r\n"
+	}
 
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+		if _, err := io.WriteString(conn, resp); err != nil {
 			return err
 		}
 	}
@@ -227,25 +221,21 @@ func (s *server) handleReplace(conn net.Conn, br *bufio.Reader, cmd storeCommand
 		return err
 	}
 
-	if val, ok := s.store.get(cmd.key); !ok || val.isExpired(s.now()) {
-		if !cmd.omitReply {
-			if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
 	val := value{
 		data:      data,
 		flags:     cmd.flags,
 		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
 	}
 
-	s.store.set(cmd.key, val)
+	var resp string
+	if s.store.replace(cmd.key, val, s.now()) {
+		resp = "STORED\r\n"
+	} else {
+		resp = "NOT_STORED\r\n"
+	}
 
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+		if _, err := io.WriteString(conn, resp); err != nil {
 			return err
 		}
 	}
@@ -259,21 +249,15 @@ func (s *server) handleAppend(conn net.Conn, br *bufio.Reader, cmd storeCommand)
 		return err
 	}
 
-	val, ok := s.store.get(cmd.key)
-	if !ok || val.isExpired(s.now()) {
-		if !cmd.omitReply {
-			if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
-				return err
-			}
-		}
-		return nil
+	var resp string
+	if s.store.append(cmd.key, data, s.now()) {
+		resp = "STORED\r\n"
+	} else {
+		resp = "NOT_STORED\r\n"
 	}
 
-	val.data = append(val.data, data...)
-	s.store.set(cmd.key, val)
-
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+		if _, err := io.WriteString(conn, resp); err != nil {
 			return err
 		}
 	}
@@ -287,21 +271,15 @@ func (s *server) handlePrepend(conn net.Conn, br *bufio.Reader, cmd storeCommand
 		return err
 	}
 
-	val, ok := s.store.get(cmd.key)
-	if !ok || val.isExpired(s.now()) {
-		if !cmd.omitReply {
-			if _, err := io.WriteString(conn, "NOT_STORED\r\n"); err != nil {
-				return err
-			}
-		}
-		return nil
+	var resp string
+	if s.store.prepend(cmd.key, data, s.now()) {
+		resp = "STORED\r\n"
+	} else {
+		resp = "NOT_STORED\r\n"
 	}
 
-	val.data = append(data, val.data...)
-	s.store.set(cmd.key, val)
-
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+		if _, err := io.WriteString(conn, resp); err != nil {
 			return err
 		}
 	}
