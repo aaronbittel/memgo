@@ -4,10 +4,33 @@ import (
 	"bytes"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestStoreExpiryUsingSynctest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := newStore()
+
+		ttl := 10 * time.Second
+		s.set("test", value{expiredAt: time.Now().Add(ttl)})
+
+		_, exists := s.get("test", time.Now())
+		require.True(t, exists, "value missing immediately after insertion")
+
+		time.Sleep(ttl)
+
+		_, exists = s.get("test", time.Now())
+		require.True(t, exists, "value expired exactly at its deadline")
+
+		time.Sleep(time.Nanosecond)
+
+		_, exists = s.get("test", time.Now())
+		require.False(t, exists, "value remained after its deadline")
+	})
+}
 
 var storeTestNow = time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
 
