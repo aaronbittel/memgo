@@ -5,6 +5,22 @@ import (
 	"time"
 )
 
+// TODO: use !now.Before(v.expiredAt) to expire an item at the expire time
+
+type value struct {
+	data      []byte
+	flags     uint16
+	expiredAt time.Time
+}
+
+func (v value) isExpired(t time.Time) bool {
+	if v.expiredAt.IsZero() {
+		return false
+	}
+
+	return v.expiredAt.Before(t)
+}
+
 type store struct {
 	mu    sync.Mutex
 	store map[string]value
