@@ -442,18 +442,14 @@ func TestSetExpiry(t *testing.T) {
 			s := newServer(testLogger(t))
 
 			var sb strings.Builder
-			err := s.handleSet(&sb, bufio.NewReader(strings.NewReader("hello\r\n")), storeCommand{
-				key:           "test",
-				expireTimeSec: -1,
-				dataLen:       5,
-			})
+			err := s.handleCommand(&sb, bufio.NewReader(strings.NewReader("set test 0 -1 5\r\nhello\r\n")))
 			require.NoError(t, err)
 			want := "STORED\r\n"
 			got := sb.String()
 			require.Equal(t, want, got)
 
 			sb.Reset()
-			err = s.handleGet(&sb, []byte("get test\r\n"))
+			err = s.handleCommand(&sb, bufio.NewReader(strings.NewReader("get test\r\n")))
 			require.NoError(t, err)
 			want = "END\r\n"
 			got = sb.String()
@@ -466,17 +462,14 @@ func TestSetExpiry(t *testing.T) {
 			s := newServer(testLogger(t))
 
 			var sb strings.Builder
-			err := s.handleSet(&sb, bufio.NewReader(strings.NewReader("hello\r\n")), storeCommand{
-				key:     "test",
-				dataLen: 5,
-			})
+			err := s.handleCommand(&sb, bufio.NewReader(strings.NewReader("set test 0 0 5\r\nhello\r\n")))
 			require.NoError(t, err)
 			want := "STORED\r\n"
 			got := sb.String()
 			require.Equal(t, want, got)
 
 			sb.Reset()
-			err = s.handleGet(&sb, []byte("test"))
+			err = s.handleCommand(&sb, bufio.NewReader(strings.NewReader("get test\r\n")))
 			require.NoError(t, err)
 			want = "VALUE test 0 5\r\nhello\r\nEND\r\n"
 			got = sb.String()
@@ -485,7 +478,7 @@ func TestSetExpiry(t *testing.T) {
 			time.Sleep(24 * 365 * 10 * time.Hour)
 
 			sb.Reset()
-			err = s.handleGet(&sb, []byte("test"))
+			err = s.handleCommand(&sb, bufio.NewReader(strings.NewReader("get test\r\n")))
 			require.NoError(t, err)
 			want = "VALUE test 0 5\r\nhello\r\nEND\r\n"
 			got = sb.String()
@@ -500,18 +493,14 @@ func TestSetExpiry(t *testing.T) {
 			ttl := 20 * time.Second
 
 			var sb strings.Builder
-			err := s.handleSet(&sb, bufio.NewReader(strings.NewReader("hello\r\n")), storeCommand{
-				key:           "test",
-				expireTimeSec: 20,
-				dataLen:       5,
-			})
+			err := s.handleCommand(&sb, bufio.NewReader(strings.NewReader("set test 0 20 5\r\nhello\r\n")))
 			require.NoError(t, err)
 			want := "STORED\r\n"
 			got := sb.String()
 			require.Equal(t, want, got)
 
 			sb.Reset()
-			err = s.handleGet(&sb, []byte("test"))
+			err = s.handleCommand(&sb, bufio.NewReader(strings.NewReader("get test\r\n")))
 			require.NoError(t, err)
 			want = "VALUE test 0 5\r\nhello\r\nEND\r\n"
 			got = sb.String()
@@ -520,7 +509,7 @@ func TestSetExpiry(t *testing.T) {
 			time.Sleep(ttl)
 
 			sb.Reset()
-			err = s.handleGet(&sb, []byte("test"))
+			err = s.handleCommand(&sb, bufio.NewReader(strings.NewReader("get test\r\n")))
 			require.NoError(t, err)
 			want = "VALUE test 0 5\r\nhello\r\nEND\r\n"
 			got = sb.String()
@@ -529,7 +518,7 @@ func TestSetExpiry(t *testing.T) {
 			time.Sleep(time.Nanosecond)
 
 			sb.Reset()
-			err = s.handleGet(&sb, []byte("test"))
+			err = s.handleCommand(&sb, bufio.NewReader(strings.NewReader("get test\r\n")))
 			require.NoError(t, err)
 			want = "END\r\n"
 			got = sb.String()

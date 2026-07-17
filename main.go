@@ -103,7 +103,7 @@ func (s *server) handleConnection(conn net.Conn) error {
 	}
 }
 
-func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
+func (s *server) handleCommand(w io.Writer, br *bufio.Reader) error {
 	commandLine, err := readCommandLine(br)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errInvalidCommandLine, err)
@@ -120,33 +120,33 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 		if err != nil {
 			return err
 		}
-		return s.handleSet(conn, br, cmd)
+		return s.handleSet(w, br, cmd)
 	case commandGet:
-		return s.handleGet(conn, commandLine)
+		return s.handleGet(w, commandLine)
 	case commandAdd:
 		cmd, err := parseStoreCommandLine(commandLine)
 		if err != nil {
 			return err
 		}
-		return s.handleAdd(conn, br, cmd)
+		return s.handleAdd(w, br, cmd)
 	case commandReplace:
 		cmd, err := parseStoreCommandLine(commandLine)
 		if err != nil {
 			return err
 		}
-		return s.handleReplace(conn, br, cmd)
+		return s.handleReplace(w, br, cmd)
 	case commandAppend:
 		cmd, err := parseStoreCommandLine(commandLine)
 		if err != nil {
 			return err
 		}
-		return s.handleAppend(conn, br, cmd)
+		return s.handleAppend(w, br, cmd)
 	case commandPrepend:
 		cmd, err := parseStoreCommandLine(commandLine)
 		if err != nil {
 			return err
 		}
-		return s.handlePrepend(conn, br, cmd)
+		return s.handlePrepend(w, br, cmd)
 	default:
 		return fmt.Errorf("illegal kind %q", kind)
 	}
