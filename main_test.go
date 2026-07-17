@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -435,74 +438,103 @@ func TestAdd(t *testing.T) {
 
 func TestSetExpiry(t *testing.T) {
 	t.Run("negative", func(t *testing.T) {
-		ts := newTestServer(t)
-		ts.serve(t)
+		synctest.Test(t, func(t *testing.T) {
+			s := newServer(testLogger(t))
 
-		tc := newTestClient(t, ts.addr())
+			var sb strings.Builder
+			err := s.handleSet(&sb, bufio.NewReader(strings.NewReader("hello\r\n")), storeCommand{
+				key:           "test",
+				expireTimeSec: -1,
+				dataLen:       5,
+			})
+			require.NoError(t, err)
+			want := "STORED\r\n"
+			got := sb.String()
+			require.Equal(t, want, got)
 
-		tc.send(t, "set test 0 -1 5\r\nhello\r\n")
-		tc.requireStored(t)
-
-		tc.send(t, "get test\r\n")
-		tc.requireEnd(t)
-
-		ts.requireKeyMissing(t, "test")
+			sb.Reset()
+			err = s.handleGet(&sb, []byte("get test\r\n"))
+			require.NoError(t, err)
+			want = "END\r\n"
+			got = sb.String()
+			require.Equal(t, want, got)
+		})
 	})
 
 	t.Run("zero", func(t *testing.T) {
-		ts := newTestServer(t)
-		ts.serve(t)
+		synctest.Test(t, func(t *testing.T) {
+			s := newServer(testLogger(t))
 
-		tc := newTestClient(t, ts.addr())
+			var sb strings.Builder
+			err := s.handleSet(&sb, bufio.NewReader(strings.NewReader("hello\r\n")), storeCommand{
+				key:     "test",
+				dataLen: 5,
+			})
+			require.NoError(t, err)
+			want := "STORED\r\n"
+			got := sb.String()
+			require.Equal(t, want, got)
 
-		tc.send(t, "set test 0 0 5\r\nhello\r\n")
-		tc.requireStored(t)
+			sb.Reset()
+			err = s.handleGet(&sb, []byte("test"))
+			require.NoError(t, err)
+			want = "VALUE test 0 5\r\nhello\r\nEND\r\n"
+			got = sb.String()
+			require.Equal(t, want, got)
 
-		want := value{data: []byte("hello")}
+			time.Sleep(24 * 365 * 10 * time.Hour)
 
-		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
-		ts.requireStoredValue(t, "test", want)
-
-		ts.now = func() time.Time {
-			return fixedNow().AddDate(10, 0, 0)
-		}
-
-		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
-		ts.requireStoredValue(t, "test", want)
+			sb.Reset()
+			err = s.handleGet(&sb, []byte("test"))
+			require.NoError(t, err)
+			want = "VALUE test 0 5\r\nhello\r\nEND\r\n"
+			got = sb.String()
+			require.Equal(t, want, got)
+		})
 	})
 
 	t.Run("positive", func(t *testing.T) {
-		ts := newTestServer(t)
-		clock := newFakeClock(fixedNow())
-		ts.now = clock.Now
+		synctest.Test(t, func(t *testing.T) {
+			s := newServer(testLogger(t))
 
-		ts.serve(t)
+			ttl := 20 * time.Second
 
-		tc := newTestClient(t, ts.addr())
+			var sb strings.Builder
+			err := s.handleSet(&sb, bufio.NewReader(strings.NewReader("hello\r\n")), storeCommand{
+				key:           "test",
+				expireTimeSec: 20,
+				dataLen:       5,
+			})
+			require.NoError(t, err)
+			want := "STORED\r\n"
+			got := sb.String()
+			require.Equal(t, want, got)
 
-		tc.send(t, "set test 0 20 5\r\nhello\r\n")
-		tc.requireStored(t)
+			sb.Reset()
+			err = s.handleGet(&sb, []byte("test"))
+			require.NoError(t, err)
+			want = "VALUE test 0 5\r\nhello\r\nEND\r\n"
+			got = sb.String()
+			require.Equal(t, want, got)
 
-		want := value{data: []byte("hello"), expiredAt: clock.Now().Add(20 * time.Second)}
+			time.Sleep(ttl)
 
-		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
-		ts.requireStoredValue(t, "test", want)
+			sb.Reset()
+			err = s.handleGet(&sb, []byte("test"))
+			require.NoError(t, err)
+			want = "VALUE test 0 5\r\nhello\r\nEND\r\n"
+			got = sb.String()
+			require.Equal(t, want, got)
 
-		clock.Advance(5 * time.Second)
+			time.Sleep(time.Nanosecond)
 
-		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
-		ts.requireStoredValue(t, "test", want)
-
-		clock.Advance(20 * time.Second)
-
-		tc.send(t, "get test\r\n")
-		tc.requireEnd(t)
-
-		ts.requireKeyMissing(t, "test")
+			sb.Reset()
+			err = s.handleGet(&sb, []byte("test"))
+			require.NoError(t, err)
+			want = "END\r\n"
+			got = sb.String()
+			require.Equal(t, want, got)
+		})
 	})
 
 	t.Run("lazy removal", func(t *testing.T) {
