@@ -26,7 +26,7 @@ func TestAppendConcurrent(t *testing.T) {
 	)
 
 	start := make(chan struct{})
-	errs := make(chan error)
+	errs := make(chan error, clients)
 
 	var wg sync.WaitGroup
 
@@ -35,6 +35,7 @@ func TestAppendConcurrent(t *testing.T) {
 			tce, err := newTestClientE(ts.addr())
 			if err != nil {
 				errs <- fmt.Errorf("creating client failed: client %d err: %v", c, err)
+				return
 			}
 
 			<-start
@@ -42,14 +43,17 @@ func TestAppendConcurrent(t *testing.T) {
 			for i := range iterations {
 				if err := tce.send("append result 0 0 1\r\na\r\n"); err != nil {
 					errs <- fmt.Errorf("sending append failed: client %d (iteration: %d) err: %v", c, i, err)
+					return
 				}
 				want := "STORED\r\n"
 				got, err := tce.recv(want)
 				if err != nil {
 					errs <- fmt.Errorf("receiving response failed: client %d (iteration: %d) err: %v", c, i, err)
+					return
 				}
 				if want != got {
 					errs <- fmt.Errorf("expected %q, got %q: client %d (iteration: %d)", want, got, c, i)
+					return
 				}
 			}
 		})
