@@ -18,17 +18,17 @@ func TestStoreExpiry(t *testing.T) {
 			ttl := 10 * time.Second
 			s.set("test", value{expiredAt: time.Now().Add(ttl)})
 
-			_, exists := s.get("test", time.Now())
+			_, exists := s.get("test")
 			require.True(t, exists, "value missing immediately after insertion")
 
 			time.Sleep(ttl)
 
-			_, exists = s.get("test", time.Now())
+			_, exists = s.get("test")
 			require.True(t, exists, "value expired exactly at its deadline")
 
 			time.Sleep(time.Nanosecond)
 
-			_, exists = s.get("test", time.Now())
+			_, exists = s.get("test")
 			require.False(t, exists, "value remained after its deadline")
 		})
 	})
@@ -40,7 +40,7 @@ func TestStoreExpiry(t *testing.T) {
 			ttl := -time.Second
 			s.set("test", value{expiredAt: time.Now().Add(ttl)})
 
-			_, exists := s.get("test", time.Now())
+			_, exists := s.get("test")
 			require.False(t, exists, "value should be instantly expired")
 		})
 	})
@@ -51,12 +51,12 @@ func TestStoreExpiry(t *testing.T) {
 
 			s.set("test", value{expiredAt: time.Time{}})
 
-			_, exists := s.get("test", time.Now())
+			_, exists := s.get("test")
 			require.True(t, exists, "value missing immediately after insertion")
 
 			time.Sleep(24 * 365 * 10 * time.Hour)
 
-			_, exists = s.get("test", time.Now())
+			_, exists = s.get("test")
 			require.True(t, exists, "value should still be in store")
 		})
 	})
@@ -74,7 +74,7 @@ func TestStoreExpiry(t *testing.T) {
 			_, exists := rawStoreValue(s, "test")
 			require.True(t, exists, "expired value was removed before get")
 
-			_, exists = s.get("test", time.Now())
+			_, exists = s.get("test")
 			require.False(t, exists, "get returned an expired value")
 
 			_, exists = rawStoreValue(s, "test")
@@ -83,15 +83,13 @@ func TestStoreExpiry(t *testing.T) {
 	})
 }
 
-var storeTestNow = time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
-
 func TestStoreSetAndGet(t *testing.T) {
 	s := newStore()
 
 	s.set("test", value{data: []byte("first"), flags: 10})
 	s.set("test", value{data: []byte("second"), flags: 20})
 
-	got, ok := s.get("test", storeTestNow)
+	got, ok := s.get("test")
 	require.True(t, ok, "get() returned ok=false; want true")
 
 	want := value{data: []byte("second"), flags: 20}
@@ -101,7 +99,7 @@ func TestStoreSetAndGet(t *testing.T) {
 func TestStoreGetMissingValue(t *testing.T) {
 	s := newStore()
 
-	got, ok := s.get("missing", storeTestNow)
+	got, ok := s.get("missing")
 	require.Falsef(t, ok, "get() returned (%#v, true); want (zero value, false)", got)
 
 	requireEqualValue(t, got, value{})
@@ -113,9 +111,9 @@ func TestStoreAdd(t *testing.T) {
 
 		want := value{data: []byte("new value"), flags: 10}
 
-		require.True(t, s.add("test", want, storeTestNow), "add() returned false; want true")
+		require.True(t, s.add("test", want), "add() returned false; want true")
 
-		got, ok := s.get("test", storeTestNow)
+		got, ok := s.get("test")
 		require.True(t, ok, "get() returned ok=false; want true")
 
 		requireEqualValue(t, want, got)
@@ -124,44 +122,46 @@ func TestStoreAdd(t *testing.T) {
 	t.Run("does not replace live value", func(t *testing.T) {
 		s := newStore()
 
-		original := value{
-			data:      []byte("original"),
-			flags:     10,
-			expiredAt: storeTestNow.Add(time.Minute),
-		}
+		original := value{data: []byte("original"), flags: 10}
 
 		s.set("test", original)
 
-		added := s.add("test", value{data: []byte("replacement"), flags: 20}, storeTestNow)
+		added := s.add("test", value{data: []byte("replacement"), flags: 20})
 		require.False(t, added, "add() returned true for an existing live value; want false")
 
-		got, ok := s.get("test", storeTestNow)
+		got, ok := s.get("test")
 		require.True(t, ok, "get() returned ok=false; want true")
 
 		requireEqualValue(t, got, original)
 	})
 
 	t.Run("replaces expired value", func(t *testing.T) {
-		s := newStore()
+		synctest.Test(t, func(t *testing.T) {
+			s := newStore()
 
-		s.set("test", value{
-			data:      []byte("expired"),
-			flags:     10,
-			expiredAt: storeTestNow.Add(-time.Second),
+			ttl := time.Minute
+
+			s.set("test", value{
+				data:      []byte("expired"),
+				flags:     10,
+				expiredAt: time.Now().Add(ttl),
+			})
+
+			time.Sleep(ttl + time.Nanosecond)
+
+			replacement := value{
+				data:      []byte("replacement"),
+				flags:     20,
+				expiredAt: time.Now().Add(ttl),
+			}
+
+			require.True(t, s.add("test", replacement), "add() returned false for an expired value; want true")
+
+			got, ok := s.get("test")
+			require.True(t, ok, "get() returned ok=false; want true")
+
+			requireEqualValue(t, got, replacement)
 		})
-
-		replacement := value{
-			data:      []byte("replacement"),
-			flags:     20,
-			expiredAt: storeTestNow.Add(time.Minute),
-		}
-
-		require.True(t, s.add("test", replacement, storeTestNow), "add() returned false for an expired value; want true")
-
-		got, ok := s.get("test", storeTestNow)
-		require.True(t, ok, "get() returned ok=false; want true")
-
-		requireEqualValue(t, got, replacement)
 	})
 }
 
@@ -169,7 +169,7 @@ func TestStoreReplace(t *testing.T) {
 	t.Run("rejects missing value", func(t *testing.T) {
 		s := newStore()
 
-		replaced := s.replace("missing", value{data: []byte("replacement")}, storeTestNow)
+		replaced := s.replace("missing", value{data: []byte("replacement")})
 		require.False(t, replaced, "replace() returned true for a missing value; want false")
 
 		_, exists := rawStoreValue(s, "missing")
@@ -184,12 +184,12 @@ func TestStoreReplace(t *testing.T) {
 		replacement := value{
 			data:      []byte("replacement"),
 			flags:     20,
-			expiredAt: storeTestNow.Add(time.Minute),
+			expiredAt: time.Now().Add(time.Minute),
 		}
 
-		require.True(t, s.replace("test", replacement, storeTestNow), "replace() returned false for a live value; want true")
+		require.True(t, s.replace("test", replacement), "replace() returned false for a live value; want true")
 
-		got, ok := s.get("test", storeTestNow)
+		got, ok := s.get("test")
 		require.True(t, ok, "get() returned ok=false; want true")
 
 		requireEqualValue(t, got, replacement)
@@ -201,7 +201,7 @@ func TestStoreReplace(t *testing.T) {
 		expired := value{
 			data:      []byte("expired"),
 			flags:     10,
-			expiredAt: storeTestNow.Add(-time.Second),
+			expiredAt: time.Now().Add(-time.Second),
 		}
 
 		s.set("test", expired)
@@ -209,7 +209,7 @@ func TestStoreReplace(t *testing.T) {
 		replaced := s.replace("test", value{
 			data:  []byte("replacement"),
 			flags: 20,
-		}, storeTestNow)
+		})
 
 		require.False(t, replaced, "replace() returned true for an expired value; want false")
 
@@ -220,129 +220,112 @@ func TestStoreReplace(t *testing.T) {
 	})
 }
 
-func TestStoreAppendAndPrepend(t *testing.T) {
-	tests := []struct {
-		name      string
-		initial   []byte
-		addition  []byte
-		operation func(*store, string, []byte, time.Time) bool
-		wantData  []byte
-	}{
-		{
-			name:      "append",
-			initial:   []byte("hello"),
-			addition:  []byte(" world"),
-			operation: (*store).append,
-			wantData:  []byte("hello world"),
-		},
-		{
-			name:      "prepend",
-			initial:   []byte("world"),
-			addition:  []byte("hello "),
-			operation: (*store).prepend,
-			wantData:  []byte("hello world"),
-		},
-	}
+func TestStoreAppend(t *testing.T) {
+	t.Run("value exists", func(t *testing.T) {
+		s := newStore()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := newStore()
+		expiredAt := time.Now().Add(time.Minute)
 
-			expiredAt := storeTestNow.Add(time.Minute)
-
-			s.set("test", value{
-				data:      tt.initial,
-				flags:     42,
-				expiredAt: expiredAt,
-			})
-
-			require.Truef(t, tt.operation(s, "test", tt.addition, storeTestNow), "%s() returned false; want true", tt.name)
-
-			got, ok := s.get("test", storeTestNow)
-			require.True(t, ok, "get() returned ok=false; want true")
-
-			want := value{data: tt.wantData, flags: 42, expiredAt: expiredAt}
-			requireEqualValue(t, want, got)
+		s.set("test", value{
+			data:      []byte("hello"),
+			flags:     42,
+			expiredAt: expiredAt,
 		})
-	}
+
+		require.Truef(t, s.append("test", []byte(" world")), "returned false; want true")
+
+		got, ok := s.get("test")
+		require.True(t, ok, "get() returned ok=false; want true")
+
+		want := value{data: []byte("hello world"), flags: 42, expiredAt: expiredAt}
+		requireEqualValue(t, want, got)
+	})
+
+	t.Run("missing value", func(t *testing.T) {
+		s := newStore()
+
+		stored := s.append("missing", []byte("value"))
+
+		require.Falsef(t, stored, "returned true for a missing value; want false")
+
+		_, exists := rawStoreValue(s, "missing")
+		require.Falsef(t, exists, "created a missing value")
+	})
+
+	t.Run("expired value", func(t *testing.T) {
+		s := newStore()
+
+		expired := value{
+			data:      []byte("original"),
+			flags:     42,
+			expiredAt: time.Now().Add(-time.Second),
+		}
+
+		s.set("test", expired)
+
+		stored := s.append("test", []byte("new data"))
+
+		require.Falsef(t, stored, "returned true for an expired value; want false")
+
+		got, exists := rawStoreValue(s, "test")
+		require.Truef(t, exists, "removed the expired value unexpectedly")
+
+		requireEqualValue(t, got, expired)
+	})
 }
 
-func TestStoreAppendAndPrependRejectMissingValue(t *testing.T) {
-	operations := []struct {
-		name      string
-		operation func(*store, string, []byte, time.Time) bool
-	}{
-		{
-			name:      "append",
-			operation: (*store).append,
-		},
-		{
-			name:      "prepend",
-			operation: (*store).prepend,
-		},
-	}
+func TestStorePrepend(t *testing.T) {
+	t.Run("value exists", func(t *testing.T) {
+		s := newStore()
 
-	for _, tt := range operations {
-		t.Run(tt.name, func(t *testing.T) {
-			s := newStore()
+		expiredAt := time.Now().Add(time.Minute)
 
-			stored := tt.operation(
-				s,
-				"missing",
-				[]byte("value"),
-				storeTestNow,
-			)
-
-			require.Falsef(t, stored, "%s() returned true for a missing value; want false", tt.name)
-
-			_, exists := rawStoreValue(s, "missing")
-			require.Falsef(t, exists, "%s() created a missing value", tt.name)
+		s.set("test", value{
+			data:      []byte("world"),
+			flags:     42,
+			expiredAt: expiredAt,
 		})
-	}
-}
 
-func TestStoreAppendAndPrependRejectExpiredValue(t *testing.T) {
-	operations := []struct {
-		name      string
-		operation func(*store, string, []byte, time.Time) bool
-	}{
-		{
-			name:      "append",
-			operation: (*store).append,
-		},
-		{
-			name:      "prepend",
-			operation: (*store).prepend,
-		},
-	}
+		require.Truef(t, s.prepend("test", []byte("hello ")), "returned false; want true")
 
-	for _, tt := range operations {
-		t.Run(tt.name, func(t *testing.T) {
-			s := newStore()
+		got, ok := s.get("test")
+		require.True(t, ok, "get() returned ok=false; want true")
 
-			expired := value{
-				data:      []byte("original"),
-				flags:     42,
-				expiredAt: storeTestNow.Add(-time.Second),
-			}
+		want := value{data: []byte("hello world"), flags: 42, expiredAt: expiredAt}
+		requireEqualValue(t, want, got)
+	})
 
-			s.set("test", expired)
+	t.Run("missing value", func(t *testing.T) {
+		s := newStore()
 
-			stored := tt.operation(
-				s,
-				"test",
-				[]byte("new data"),
-				storeTestNow,
-			)
+		stored := s.prepend("missing", []byte("value"))
 
-			require.Falsef(t, stored, "%s() returned true for an expired value; want false", tt.name)
+		require.Falsef(t, stored, "returned true for a missing value; want false")
 
-			got, exists := rawStoreValue(s, "test")
-			require.Truef(t, exists, "%s() removed the expired value unexpectedly", tt.name)
+		_, exists := rawStoreValue(s, "missing")
+		require.Falsef(t, exists, "created a missing value")
+	})
 
-			requireEqualValue(t, got, expired)
-		})
-	}
+	t.Run("expired value", func(t *testing.T) {
+		s := newStore()
+
+		expired := value{
+			data:      []byte("original"),
+			flags:     42,
+			expiredAt: time.Now().Add(-time.Second),
+		}
+
+		s.set("test", expired)
+
+		stored := s.prepend("test", []byte("new data"))
+
+		require.Falsef(t, stored, "returned true for an expired value; want false")
+
+		got, exists := rawStoreValue(s, "test")
+		require.Truef(t, exists, "removed the expired value unexpectedly")
+
+		requireEqualValue(t, got, expired)
+	})
 }
 
 func TestStoreConcurrentAppend(t *testing.T) {
@@ -359,7 +342,7 @@ func TestStoreConcurrentAppend(t *testing.T) {
 	for range goroutines {
 		wg.Go(func() {
 			<-start
-			results <- s.append("test", []byte{'x'}, storeTestNow)
+			results <- s.append("test", []byte{'x'})
 		})
 	}
 
@@ -371,7 +354,7 @@ func TestStoreConcurrentAppend(t *testing.T) {
 		require.True(t, stored, "append() returned false during concurrent access")
 	}
 
-	got, ok := s.get("test", storeTestNow)
+	got, ok := s.get("test")
 	require.True(t, ok, "get() returned ok=false; want true")
 
 	if gotLength := len(got.data); gotLength != goroutines {

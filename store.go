@@ -14,7 +14,9 @@ func newStore() *store {
 	return &store{store: make(map[string]value)}
 }
 
-func (cm *store) get(key string, now time.Time) (value, bool) {
+func (cm *store) get(key string) (value, bool) {
+	now := time.Now()
+
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -38,7 +40,9 @@ func (cm *store) set(key string, value value) {
 	cm.store[key] = value
 }
 
-func (cm *store) add(key string, value value, now time.Time) bool {
+func (cm *store) add(key string, value value) bool {
+	now := time.Now()
+
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -56,7 +60,9 @@ func (cm *store) add(key string, value value, now time.Time) bool {
 	return false
 }
 
-func (cm *store) replace(key string, value value, now time.Time) bool {
+func (cm *store) replace(key string, value value) bool {
+	now := time.Now()
+
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -69,7 +75,9 @@ func (cm *store) replace(key string, value value, now time.Time) bool {
 	return true
 }
 
-func (cm *store) append(key string, valueData []byte, now time.Time) bool {
+func (cm *store) append(key string, valueData []byte) bool {
+	now := time.Now()
+
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -88,7 +96,9 @@ func (cm *store) append(key string, valueData []byte, now time.Time) bool {
 	return true
 }
 
-func (cm *store) prepend(key string, valueData []byte, now time.Time) bool {
+func (cm *store) prepend(key string, valueData []byte) bool {
+	now := time.Now()
+
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 

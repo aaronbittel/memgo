@@ -20,7 +20,6 @@ const DefaultPort = 11211
 
 type server struct {
 	logger *slog.Logger
-	now    func() time.Time
 
 	store *store
 }
@@ -28,7 +27,6 @@ type server struct {
 func newServer(logger *slog.Logger) *server {
 	return &server{
 		logger: logger,
-		now:    time.Now,
 		store:  newStore(),
 	}
 }
@@ -155,7 +153,7 @@ func (s *server) handleCommand(w io.Writer, br *bufio.Reader) error {
 func (s *server) handleGet(w io.Writer, key []byte) error {
 	var buf bytes.Buffer
 
-	val, ok := s.store.get(string(key), s.now())
+	val, ok := s.store.get(string(key))
 	if ok {
 		fmt.Fprintf(&buf, "VALUE %s %d %d\r\n%s\r\n", key, val.flags, len(val.data), val.data)
 	}
@@ -202,7 +200,7 @@ func (s *server) handleAdd(w io.Writer, br *bufio.Reader, cmd storeCommand) erro
 
 	var resp string
 
-	if s.store.add(cmd.key, val, s.now()) {
+	if s.store.add(cmd.key, val) {
 		resp = "STORED\r\n"
 	} else {
 		resp = "NOT_STORED\r\n"
@@ -230,7 +228,7 @@ func (s *server) handleReplace(w io.Writer, br *bufio.Reader, cmd storeCommand) 
 	}
 
 	var resp string
-	if s.store.replace(cmd.key, val, s.now()) {
+	if s.store.replace(cmd.key, val) {
 		resp = "STORED\r\n"
 	} else {
 		resp = "NOT_STORED\r\n"
@@ -252,7 +250,7 @@ func (s *server) handleAppend(w io.Writer, br *bufio.Reader, cmd storeCommand) e
 	}
 
 	var resp string
-	if s.store.append(cmd.key, data, s.now()) {
+	if s.store.append(cmd.key, data) {
 		resp = "STORED\r\n"
 	} else {
 		resp = "NOT_STORED\r\n"
@@ -274,7 +272,7 @@ func (s *server) handlePrepend(w io.Writer, br *bufio.Reader, cmd storeCommand) 
 	}
 
 	var resp string
-	if s.store.prepend(cmd.key, data, s.now()) {
+	if s.store.prepend(cmd.key, data) {
 		resp = "STORED\r\n"
 	} else {
 		resp = "NOT_STORED\r\n"

@@ -64,7 +64,7 @@ func TestAppendConcurrent(t *testing.T) {
 	}
 
 	wantCount := clients * iterations
-	val, ok := ts.store.get("result", ts.now())
+	val, ok := ts.store.get("result")
 
 	require.True(t, ok, "no value with key \"result\" in store")
 	assert.Equal(t, wantCount, len(val.data), "expected same length for value")
