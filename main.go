@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+// TODO: use !now.Before(v.expiredAt) to expire an item at the expire time
+
 const DefaultPort = 11211
 
 type server struct {

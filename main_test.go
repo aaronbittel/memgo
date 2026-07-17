@@ -734,3 +734,21 @@ func TestParseStoreCommandLine(t *testing.T) {
 		})
 	}
 }
+
+func TestValueExpirationBoundary(t *testing.T) {
+	deadline := time.Date(2026, time.July, 17, 12, 0, 0, 0, time.UTC)
+
+	v := value{expiredAt: deadline}
+
+	require.False(
+		t,
+		v.isExpired(deadline),
+		"value should remain live exactly at its expiration deadline",
+	)
+
+	require.True(
+		t,
+		v.isExpired(deadline.Add(time.Nanosecond)),
+		"value should be expired after its expiration deadline",
+	)
+}
