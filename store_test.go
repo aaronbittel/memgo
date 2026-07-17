@@ -10,25 +10,60 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStoreExpiryUsingSynctest(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		s := newStore()
+func TestStoreExpiry(t *testing.T) {
+	t.Run("positive", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newStore()
 
-		ttl := 10 * time.Second
-		s.set("test", value{expiredAt: time.Now().Add(ttl)})
+			ttl := 10 * time.Second
+			s.set("test", value{expiredAt: time.Now().Add(ttl)})
 
-		_, exists := s.get("test", time.Now())
-		require.True(t, exists, "value missing immediately after insertion")
+			_, exists := s.get("test", time.Now())
+			require.True(t, exists, "value missing immediately after insertion")
 
-		time.Sleep(ttl)
+			time.Sleep(ttl)
 
-		_, exists = s.get("test", time.Now())
-		require.True(t, exists, "value expired exactly at its deadline")
+			_, exists = s.get("test", time.Now())
+			require.True(t, exists, "value expired exactly at its deadline")
 
-		time.Sleep(time.Nanosecond)
+			time.Sleep(time.Nanosecond)
 
-		_, exists = s.get("test", time.Now())
-		require.False(t, exists, "value remained after its deadline")
+			_, exists = s.get("test", time.Now())
+			require.False(t, exists, "value remained after its deadline")
+		})
+	})
+
+	t.Run("negative", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newStore()
+
+			ttl := -time.Second
+			s.set("test", value{expiredAt: time.Now().Add(ttl)})
+
+			_, exists := s.get("test", time.Now())
+			require.False(t, exists, "value should be instantly expired")
+
+			time.Sleep(time.Nanosecond)
+
+			_, exists = s.get("test", time.Now())
+			require.False(t, exists, "value should still be expired")
+		})
+	})
+
+	t.Run("zero", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newStore()
+
+			s.set("test", value{expiredAt: time.Time{}})
+
+			_, exists := s.get("test", time.Now())
+			require.True(t, exists, "value missing immediately after insertion")
+
+			time.Sleep(24 * 365 * 10 * time.Hour)
+
+			_, exists = s.get("test", time.Now())
+			require.True(t, exists, "value should still be in store")
+		})
 	})
 }
 
