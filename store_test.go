@@ -42,11 +42,6 @@ func TestStoreExpiry(t *testing.T) {
 
 			_, exists := s.get("test", time.Now())
 			require.False(t, exists, "value should be instantly expired")
-
-			time.Sleep(time.Nanosecond)
-
-			_, exists = s.get("test", time.Now())
-			require.False(t, exists, "value should still be expired")
 		})
 	})
 
@@ -63,6 +58,27 @@ func TestStoreExpiry(t *testing.T) {
 
 			_, exists = s.get("test", time.Now())
 			require.True(t, exists, "value should still be in store")
+		})
+	})
+
+	t.Run("lazy removal", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newStore()
+
+			ttl := 5 * time.Minute
+
+			s.set("test", value{expiredAt: time.Now().Add(ttl)})
+
+			time.Sleep(ttl + time.Nanosecond)
+
+			_, exists := rawStoreValue(s, "test")
+			require.True(t, exists, "expired value was removed before get")
+
+			_, exists = s.get("test", time.Now())
+			require.False(t, exists, "get returned an expired value")
+
+			_, exists = rawStoreValue(s, "test")
+			require.False(t, exists, "expired value remains after get")
 		})
 	})
 }
@@ -89,25 +105,6 @@ func TestStoreGetMissingValue(t *testing.T) {
 	require.Falsef(t, ok, "get() returned (%#v, true); want (zero value, false)", got)
 
 	requireEqualValue(t, got, value{})
-}
-
-func TestStoreGetRemovesExpiredValue(t *testing.T) {
-	s := newStore()
-
-	s.set("test", value{
-		data:      []byte("expired"),
-		flags:     10,
-		expiredAt: storeTestNow.Add(-time.Second),
-	})
-
-	got, ok := s.get("test", storeTestNow)
-	require.False(t, ok, "get() returned (%#v, true); want (zero value, false)", got)
-
-	requireEqualValue(t, got, value{})
-
-	if _, exists := rawStoreValue(s, "test"); exists {
-		t.Fatal("expired value remains in the underlying map; want it removed")
-	}
 }
 
 func TestStoreAdd(t *testing.T) {

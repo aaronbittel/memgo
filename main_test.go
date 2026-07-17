@@ -525,33 +525,6 @@ func TestSetExpiry(t *testing.T) {
 			require.Equal(t, want, got)
 		})
 	})
-
-	t.Run("lazy removal", func(t *testing.T) {
-		ts := newTestServer(t)
-		clock := newFakeClock(fixedNow())
-		ts.now = clock.Now
-		ts.serve(t)
-
-		tc := newTestClient(t, ts.addr())
-
-		tc.send(t, "set test 0 10 5\r\nhello\r\n")
-		tc.requireStored(t)
-
-		tc.send(t, "get test\r\n")
-		tc.requireResponse(t, "VALUE test 0 5\r\nhello\r\nEND\r\n")
-
-		clock.Advance(20 * time.Second)
-
-		want := value{
-			data:      []byte("hello"),
-			expiredAt: fixedNow().Add(10 * time.Second),
-		}
-		ts.requireStoredValue(t, "test", want)
-
-		tc.send(t, "get test\r\n")
-		tc.requireEnd(t)
-		ts.requireKeyMissing(t, "test")
-	})
 }
 
 var fixedNow = func() time.Time {

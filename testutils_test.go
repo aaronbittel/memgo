@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -190,15 +189,6 @@ func (ts *testServer) requireStoredValue(t *testing.T, key string, want value) {
 	require.Equal(t, want, got)
 }
 
-func (ts *testServer) requireKeyMissing(t *testing.T, key string) {
-	t.Helper()
-
-	ts.store.mu.Lock()
-	_, ok := ts.store.store[key]
-	ts.store.mu.Unlock()
-	require.Falsef(t, ok, "expected store not to contain key %q", key)
-}
-
 type testClientE struct {
 	conn net.Conn
 	r    *bufio.Reader
@@ -242,27 +232,4 @@ func (tce *testClientE) recv(want string) (string, error) {
 	}
 
 	return sb.String(), nil
-}
-
-type fakeClock struct {
-	mu  sync.RWMutex
-	now time.Time
-}
-
-func newFakeClock(now time.Time) *fakeClock {
-	return &fakeClock{now: now}
-}
-
-func (c *fakeClock) Now() time.Time {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.now
-}
-
-func (c *fakeClock) Advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.now = c.now.Add(d)
 }
