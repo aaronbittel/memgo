@@ -112,15 +112,19 @@ func (s *server) handleCommand(w io.Writer, br *bufio.Reader) error {
 		return fmt.Errorf("%w: %v", errInvalidCommandLine, err)
 	}
 
+	return s.dispatchCommand(w, br, kind, commandLine)
+}
+
+func (s *server) dispatchCommand(w io.Writer, br *bufio.Reader, kind commandKind, commandLine []byte) error {
 	switch kind {
+	case commandGet:
+		return s.handleGet(w, commandLine)
 	case commandSet:
 		cmd, err := parseStoreCommandLine(commandLine)
 		if err != nil {
 			return err
 		}
 		return s.handleSet(w, br, cmd)
-	case commandGet:
-		return s.handleGet(w, commandLine)
 	case commandAdd:
 		cmd, err := parseStoreCommandLine(commandLine)
 		if err != nil {
