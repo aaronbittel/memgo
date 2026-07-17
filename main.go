@@ -152,7 +152,7 @@ func (s *server) handleCommand(conn net.Conn, br *bufio.Reader) error {
 	}
 }
 
-func (s *server) handleGet(conn net.Conn, key []byte) error {
+func (s *server) handleGet(w io.Writer, key []byte) error {
 	var buf bytes.Buffer
 
 	val, ok := s.store.get(string(key), s.now())
@@ -161,11 +161,11 @@ func (s *server) handleGet(conn net.Conn, key []byte) error {
 	}
 	buf.WriteString("END\r\n")
 
-	_, err := buf.WriteTo(conn)
+	_, err := buf.WriteTo(w)
 	return err
 }
 
-func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
+func (s *server) handleSet(w io.Writer, br *bufio.Reader, cmd storeCommand) error {
 	data, err := readDataBlock(br, cmd.dataLen)
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 	s.store.set(cmd.key, val)
 
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, "STORED\r\n"); err != nil {
+		if _, err := io.WriteString(w, "STORED\r\n"); err != nil {
 			return err
 		}
 	}
@@ -188,7 +188,7 @@ func (s *server) handleSet(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 	return nil
 }
 
-func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
+func (s *server) handleAdd(w io.Writer, br *bufio.Reader, cmd storeCommand) error {
 	data, err := readDataBlock(br, cmd.dataLen)
 	if err != nil {
 		return err
@@ -209,7 +209,7 @@ func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 	}
 
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, resp); err != nil {
+		if _, err := io.WriteString(w, resp); err != nil {
 			return err
 		}
 	}
@@ -217,7 +217,7 @@ func (s *server) handleAdd(conn net.Conn, br *bufio.Reader, cmd storeCommand) er
 	return nil
 }
 
-func (s *server) handleReplace(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
+func (s *server) handleReplace(w io.Writer, br *bufio.Reader, cmd storeCommand) error {
 	data, err := readDataBlock(br, cmd.dataLen)
 	if err != nil {
 		return err
@@ -237,7 +237,7 @@ func (s *server) handleReplace(conn net.Conn, br *bufio.Reader, cmd storeCommand
 	}
 
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, resp); err != nil {
+		if _, err := io.WriteString(w, resp); err != nil {
 			return err
 		}
 	}
@@ -245,7 +245,7 @@ func (s *server) handleReplace(conn net.Conn, br *bufio.Reader, cmd storeCommand
 	return nil
 }
 
-func (s *server) handleAppend(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
+func (s *server) handleAppend(w io.Writer, br *bufio.Reader, cmd storeCommand) error {
 	data, err := readDataBlock(br, cmd.dataLen)
 	if err != nil {
 		return err
@@ -259,7 +259,7 @@ func (s *server) handleAppend(conn net.Conn, br *bufio.Reader, cmd storeCommand)
 	}
 
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, resp); err != nil {
+		if _, err := io.WriteString(w, resp); err != nil {
 			return err
 		}
 	}
@@ -267,7 +267,7 @@ func (s *server) handleAppend(conn net.Conn, br *bufio.Reader, cmd storeCommand)
 	return nil
 }
 
-func (s *server) handlePrepend(conn net.Conn, br *bufio.Reader, cmd storeCommand) error {
+func (s *server) handlePrepend(w io.Writer, br *bufio.Reader, cmd storeCommand) error {
 	data, err := readDataBlock(br, cmd.dataLen)
 	if err != nil {
 		return err
@@ -281,7 +281,7 @@ func (s *server) handlePrepend(conn net.Conn, br *bufio.Reader, cmd storeCommand
 	}
 
 	if !cmd.omitReply {
-		if _, err := io.WriteString(conn, resp); err != nil {
+		if _, err := io.WriteString(w, resp); err != nil {
 			return err
 		}
 	}
@@ -289,9 +289,9 @@ func (s *server) handlePrepend(conn net.Conn, br *bufio.Reader, cmd storeCommand
 	return nil
 }
 
-func readDataBlock(br *bufio.Reader, dataLen int) ([]byte, error) {
+func readDataBlock(r io.Reader, dataLen int) ([]byte, error) {
 	dataWithCrlf := make([]byte, dataLen+2) // crlf
-	if _, err := io.ReadFull(br, dataWithCrlf); err != nil {
+	if _, err := io.ReadFull(r, dataWithCrlf); err != nil {
 		return nil, err
 	}
 	if !bytes.HasSuffix(dataWithCrlf, []byte("\r\n")) {
