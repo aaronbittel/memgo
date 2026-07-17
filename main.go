@@ -301,11 +301,11 @@ func readDataBlock(br *bufio.Reader, dataLen int) ([]byte, error) {
 }
 
 func (s *server) calculateExpiryTime(expireTimeSec int) time.Time {
-	var expiredAt time.Time
-	if expireTimeSec != 0 {
-		expiredAt = s.now().Add(time.Duration(expireTimeSec) * time.Second)
+	if expireTimeSec == 0 {
+		return time.Time{}
 	}
-	return expiredAt
+
+	return s.now().Add(time.Duration(expireTimeSec) * time.Second)
 }
 
 func readCommandLine(br *bufio.Reader) ([]byte, error) {
