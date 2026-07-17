@@ -217,10 +217,10 @@ func (tce *testClientE) send(s string) error {
 }
 
 func (tce *testClientE) recv(want string) (string, error) {
-	if err := tce.conn.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
+	if err := tce.conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		return "", err
 	}
-	defer tce.conn.SetWriteDeadline(time.Time{})
+	defer tce.conn.SetReadDeadline(time.Time{})
 
 	var sb strings.Builder
 	for range strings.Count(want, "\n") {
