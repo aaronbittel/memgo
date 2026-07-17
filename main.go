@@ -305,7 +305,7 @@ func (s *server) calculateExpiryTime(expireTimeSec int) time.Time {
 		return time.Time{}
 	}
 
-	return s.now().Add(time.Duration(expireTimeSec) * time.Second)
+	return time.Now().Add(time.Duration(expireTimeSec) * time.Second)
 }
 
 func readCommandLine(br *bufio.Reader) ([]byte, error) {
