@@ -161,14 +161,20 @@ func (ts *testServer) serve(t *testing.T) {
 	})
 }
 
+func testLogger(t *testing.T) *slog.Logger {
+	t.Helper()
+
+	return slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
+		Level:     slog.LevelError,
+		AddSource: true,
+	}))
+}
+
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 
 	return &testServer{
-		server: newServer(slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
-			Level:     slog.LevelError,
-			AddSource: true,
-		}))),
+		server:   newServer(testLogger(t)),
 		ln:       newTestListener(t),
 		serveErr: make(chan error, 1),
 	}

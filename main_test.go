@@ -558,14 +558,6 @@ func TestSet(t *testing.T) {
 			},
 		},
 		{
-			name:    "stores expiry time",
-			command: "set test 0 20 4\r\n1234\r\n",
-			want: value{
-				data:      []byte("1234"),
-				expiredAt: fixedNow().Add(20 * time.Second),
-			},
-		},
-		{
 			name:    "crlf in value",
 			command: "set test 0 0 6\r\n12\r\n34\r\n",
 			want:    value{data: []byte("12\r\n34")},
@@ -575,8 +567,6 @@ func TestSet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ts := newTestServer(t)
-			ts.now = fixedNow
-
 			ts.serve(t)
 
 			tc := newTestClient(t, ts.addr())
@@ -598,6 +588,41 @@ func TestSet(t *testing.T) {
 		tc.requireNoResponse(t)
 		ts.requireStoredValue(t, "test", value{data: []byte("hello")})
 	})
+}
+
+func TestCalculateExpiryTime(t *testing.T) {
+	tests := []struct {
+		name  string
+		input int
+		want  time.Time
+	}{
+		{
+			name:  "positive",
+			input: 20,
+			want:  fixedNow().Add(20 * time.Second),
+		},
+		{
+			name:  "zero",
+			input: 0,
+			want:  time.Time{},
+		},
+		{
+			name:  "negative",
+			input: -1,
+			want:  fixedNow().Add(-time.Second),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newServer(testLogger(t))
+			s.now = fixedNow
+
+			got := s.calculateExpiryTime(tt.input)
+
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestSetAndGet(t *testing.T) {
