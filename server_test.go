@@ -13,7 +13,10 @@ import (
 
 func TestAppendConcurrent(t *testing.T) {
 	ts := newTestServer(t)
-	ts.store.set("result", value{data: []byte("")})
+
+	err := ts.store.set("result", value{data: []byte("")})
+	require.NoError(t, err)
+
 	ts.serve(t)
 
 	const (
@@ -75,7 +78,10 @@ func TestAppendConcurrent(t *testing.T) {
 
 func TestConcurrent(t *testing.T) {
 	ts := newTestServer(t)
-	ts.store.set("counter", value{data: []byte("0")})
+
+	err := ts.store.set("counter", value{data: []byte("0")})
+	require.NoError(t, err)
+
 	ts.serve(t)
 
 	const (
@@ -95,7 +101,9 @@ func TestConcurrent(t *testing.T) {
 				errs <- fmt.Errorf("client %d: connect: %w", i, err)
 				return
 			}
-			defer tce.conn.Close()
+			defer func() {
+				_ = tce.conn.Close()
+			}()
 
 			<-start
 

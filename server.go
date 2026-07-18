@@ -50,13 +50,21 @@ func (s *server) ListenAndServe(addr string) error {
 		s.logger.Error("listening", "addr", addr, "err", err)
 		return err
 	}
-	defer ln.Close()
+	defer func() {
+		if err := ln.Close(); err != nil {
+			s.logger.Error("closing listener", "addr", addr, "err", err)
+		}
+	}()
 
 	return s.Serve(ln)
 }
 
 func (s *server) handleConnection(conn net.Conn) error {
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			s.logger.Error("closing connection", "conn", conn.RemoteAddr(), "err", err)
+		}
+	}()
 
 	var (
 		br  = bufio.NewReader(conn)

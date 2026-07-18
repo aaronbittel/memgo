@@ -13,7 +13,9 @@ import (
 func TestGet(t *testing.T) {
 	t.Run("value", func(t *testing.T) {
 		ts := newTestServer(t)
-		ts.store.set("test", value{data: []byte("hello, world!")})
+
+		err := ts.store.set("test", value{data: []byte("hello, world!")})
+		require.NoError(t, err)
 
 		ts.serve(t)
 
@@ -35,7 +37,9 @@ func TestGet(t *testing.T) {
 
 	t.Run("crlf in value", func(t *testing.T) {
 		ts := newTestServer(t)
-		ts.store.set("test", value{data: []byte("hello\r\nworld")})
+
+		err := ts.store.set("test", value{data: []byte("hello\r\nworld")})
+		require.NoError(t, err)
 
 		ts.serve(t)
 

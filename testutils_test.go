@@ -22,7 +22,7 @@ func newTestListener(t *testing.T) net.Listener {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		ln.Close()
+		_ = ln.Close()
 	})
 
 	return ln
@@ -40,7 +40,7 @@ func newTestClient(t *testing.T, addr string) *testClient {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		conn.Close()
+		_ = conn.Close()
 	})
 
 	return &testClient{conn: conn, r: bufio.NewReader(conn)}
@@ -50,7 +50,9 @@ func (tc *testClient) send(t *testing.T, s string) {
 	t.Helper()
 
 	require.NoError(t, tc.conn.SetWriteDeadline(time.Now().Add(time.Second)))
-	defer tc.conn.SetWriteDeadline(time.Time{})
+	defer func() {
+		_ = tc.conn.SetWriteDeadline(time.Time{})
+	}()
 
 	_, err := io.WriteString(tc.conn, s)
 	require.NoError(t, err)
@@ -98,7 +100,9 @@ func (tc *testClient) requireResponse(t *testing.T, want string) {
 		t.Fatalf("requireLine: want must contain one CRLF-terminated line, got %q", want)
 	}
 	require.NoError(t, tc.conn.SetReadDeadline(time.Now().Add(time.Second)))
-	defer tc.conn.SetReadDeadline(time.Time{})
+	defer func() {
+		_ = tc.conn.SetReadDeadline(time.Time{})
+	}()
 
 	var sb strings.Builder
 	for range strings.Count(want, "\n") {
@@ -114,7 +118,9 @@ func (tc *testClient) requireNoResponse(t *testing.T) {
 	t.Helper()
 
 	require.NoError(t, tc.conn.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
-	defer tc.conn.SetReadDeadline(time.Time{})
+	defer func() {
+		_ = tc.conn.SetReadDeadline(time.Time{})
+	}()
 
 	_, err := tc.r.Peek(1)
 
@@ -210,7 +216,9 @@ func (tce *testClientE) send(s string) error {
 	if err := tce.conn.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
 		return err
 	}
-	defer tce.conn.SetWriteDeadline(time.Time{})
+	defer func() {
+		_ = tce.conn.SetWriteDeadline(time.Time{})
+	}()
 
 	_, err := io.WriteString(tce.conn, s)
 	return err
@@ -220,7 +228,9 @@ func (tce *testClientE) recv(want string) (string, error) {
 	if err := tce.conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		return "", err
 	}
-	defer tce.conn.SetReadDeadline(time.Time{})
+	defer func() {
+		_ = tce.conn.SetReadDeadline(time.Time{})
+	}()
 
 	var sb strings.Builder
 	for range strings.Count(want, "\n") {

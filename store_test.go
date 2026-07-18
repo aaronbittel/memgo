@@ -39,7 +39,9 @@ func TestStoreExpiry(t *testing.T) {
 			s := newStore()
 
 			ttl := 10 * time.Second
-			s.set("test", value{expiredAt: time.Now().Add(ttl)})
+
+			err := s.set("test", value{expiredAt: time.Now().Add(ttl)})
+			require.NoError(t, err)
 
 			_, exists := s.get("test")
 			require.True(t, exists, "value missing immediately after insertion")
@@ -61,7 +63,9 @@ func TestStoreExpiry(t *testing.T) {
 			s := newStore()
 
 			ttl := -time.Second
-			s.set("test", value{expiredAt: time.Now().Add(ttl)})
+
+			err := s.set("test", value{expiredAt: time.Now().Add(ttl)})
+			require.NoError(t, err)
 
 			_, exists := s.get("test")
 			require.False(t, exists, "value should be instantly expired")
@@ -72,7 +76,8 @@ func TestStoreExpiry(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			s := newStore()
 
-			s.set("test", value{expiredAt: time.Time{}})
+			err := s.set("test", value{expiredAt: time.Time{}})
+			require.NoError(t, err)
 
 			_, exists := s.get("test")
 			require.True(t, exists, "value missing immediately after insertion")
@@ -90,7 +95,8 @@ func TestStoreExpiry(t *testing.T) {
 
 			ttl := 5 * time.Minute
 
-			s.set("test", value{expiredAt: time.Now().Add(ttl)})
+			err := s.set("test", value{expiredAt: time.Now().Add(ttl)})
+			require.NoError(t, err)
 
 			time.Sleep(ttl + time.Nanosecond)
 
@@ -109,8 +115,10 @@ func TestStoreExpiry(t *testing.T) {
 func TestStoreSetAndGet(t *testing.T) {
 	s := newStore()
 
-	s.set("test", value{data: []byte("first"), flags: 10})
-	s.set("test", value{data: []byte("second"), flags: 20})
+	err := s.set("test", value{data: []byte("first"), flags: 10})
+	require.NoError(t, err)
+	err = s.set("test", value{data: []byte("second"), flags: 20})
+	require.NoError(t, err)
 
 	got, ok := s.get("test")
 	require.True(t, ok, "get() returned ok=false; want true")
@@ -149,7 +157,8 @@ func TestStoreAdd(t *testing.T) {
 
 		original := value{data: []byte("original"), flags: 10}
 
-		s.set("test", original)
+		err := s.set("test", original)
+		require.NoError(t, err)
 
 		added, err := s.add("test", value{data: []byte("replacement"), flags: 20})
 		require.NoError(t, err)
@@ -167,11 +176,12 @@ func TestStoreAdd(t *testing.T) {
 
 			ttl := time.Minute
 
-			s.set("test", value{
+			err := s.set("test", value{
 				data:      []byte("expired"),
 				flags:     10,
 				expiredAt: time.Now().Add(ttl),
 			})
+			require.NoError(t, err)
 
 			time.Sleep(ttl + time.Nanosecond)
 
@@ -238,7 +248,8 @@ func TestStoreReplace(t *testing.T) {
 	t.Run("replaces live value", func(t *testing.T) {
 		s := newStore()
 
-		s.set("test", value{data: []byte("original"), flags: 10})
+		err := s.set("test", value{data: []byte("original"), flags: 10})
+		require.NoError(t, err)
 
 		replacement := value{
 			data:      []byte("replacement"),
@@ -265,7 +276,8 @@ func TestStoreReplace(t *testing.T) {
 			expiredAt: time.Now().Add(-time.Second),
 		}
 
-		s.set("test", expired)
+		err := s.set("test", expired)
+		require.NoError(t, err)
 
 		replaced, err := s.replace("test", value{
 			data:  []byte("replacement"),
@@ -285,7 +297,9 @@ func TestStoreReplace(t *testing.T) {
 func TestStoreReplaceValueLength(t *testing.T) {
 	t.Run("empty data", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := []byte{}
 		replaced, err := s.replace("test", value{data: data})
@@ -295,7 +309,9 @@ func TestStoreReplaceValueLength(t *testing.T) {
 
 	t.Run("maxValueSize", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := bytes.Repeat([]byte{'a'}, maxValueSize)
 
@@ -306,11 +322,13 @@ func TestStoreReplaceValueLength(t *testing.T) {
 
 	t.Run("value length too large", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
 
-		_, err := s.replace("test", value{data: data})
+		_, err = s.replace("test", value{data: data})
 		require.ErrorIs(t, err, errValueTooLarge)
 	})
 }
@@ -321,11 +339,12 @@ func TestStoreAppend(t *testing.T) {
 
 		expiredAt := time.Now().Add(time.Minute)
 
-		s.set("test", value{
+		err := s.set("test", value{
 			data:      []byte("hello"),
 			flags:     42,
 			expiredAt: expiredAt,
 		})
+		require.NoError(t, err)
 
 		appended, err := s.append("test", []byte(" world"))
 		require.NoError(t, err)
@@ -359,7 +378,8 @@ func TestStoreAppend(t *testing.T) {
 			expiredAt: time.Now().Add(-time.Second),
 		}
 
-		s.set("test", expired)
+		err := s.set("test", expired)
+		require.NoError(t, err)
 
 		appended, err := s.append("test", []byte("new data"))
 		require.NoError(t, err)
@@ -376,7 +396,9 @@ func TestStoreAppend(t *testing.T) {
 func TestStoreAppendValueLength(t *testing.T) {
 	t.Run("empty data", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := []byte{}
 		appended, err := s.append("test", data)
@@ -386,7 +408,9 @@ func TestStoreAppendValueLength(t *testing.T) {
 
 	t.Run("maxValueSize", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := bytes.Repeat([]byte{'a'}, maxValueSize)
 
@@ -397,11 +421,13 @@ func TestStoreAppendValueLength(t *testing.T) {
 
 	t.Run("value length too large", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
 
-		_, err := s.append("test", data)
+		_, err = s.append("test", data)
 		require.ErrorIs(t, err, errValueTooLarge)
 	})
 
@@ -461,11 +487,12 @@ func TestStorePrepend(t *testing.T) {
 
 		expiredAt := time.Now().Add(time.Minute)
 
-		s.set("test", value{
+		err := s.set("test", value{
 			data:      []byte("world"),
 			flags:     42,
 			expiredAt: expiredAt,
 		})
+		require.NoError(t, err)
 
 		prepended, err := s.prepend("test", []byte("hello "))
 
@@ -500,7 +527,8 @@ func TestStorePrepend(t *testing.T) {
 			expiredAt: time.Now().Add(-time.Second),
 		}
 
-		s.set("test", expired)
+		err := s.set("test", expired)
+		require.NoError(t, err)
 
 		prepended, err := s.prepend("test", []byte("new data"))
 		require.NoError(t, err)
@@ -517,7 +545,9 @@ func TestStorePrepend(t *testing.T) {
 func TestStorePrependValueLength(t *testing.T) {
 	t.Run("empty data", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := []byte{}
 		prepended, err := s.prepend("test", data)
@@ -527,7 +557,9 @@ func TestStorePrependValueLength(t *testing.T) {
 
 	t.Run("maxValueSize", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := bytes.Repeat([]byte{'a'}, maxValueSize)
 
@@ -538,11 +570,13 @@ func TestStorePrependValueLength(t *testing.T) {
 
 	t.Run("value length too large", func(t *testing.T) {
 		s := newStore()
-		s.set("test", value{})
+
+		err := s.set("test", value{})
+		require.NoError(t, err)
 
 		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
 
-		_, err := s.prepend("test", data)
+		_, err = s.prepend("test", data)
 		require.ErrorIs(t, err, errValueTooLarge)
 	})
 
@@ -600,7 +634,9 @@ func TestStoreConcurrentAppend(t *testing.T) {
 	const goroutines = 100
 
 	s := newStore()
-	s.set("test", value{data: []byte{}})
+
+	err := s.set("test", value{data: []byte{}})
+	require.NoError(t, err)
 
 	start := make(chan struct{})
 	results := make(chan bool, goroutines)
