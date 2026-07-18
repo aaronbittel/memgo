@@ -30,6 +30,9 @@ type storeCommand struct {
 
 var errInvalidCommandLine = errors.New("invalid command line")
 
+// readCommandLine reads a CRLF-terminated command line and returns it without the
+// trailing CRLF. The returned byte slice is only valid till the next read call of the
+// bufio.Reader.
 func readCommandLine(br *bufio.Reader) ([]byte, error) {
 	commandLine, err := br.ReadSlice('\n')
 	if err != nil {
@@ -48,6 +51,8 @@ func readCommandLine(br *bufio.Reader) ([]byte, error) {
 	return commandLine, nil
 }
 
+// parseCmdKind parses the command kind at the beginning of commandLine and returns the
+// remaining bytes.
 func parseCmdKind(commandLine []byte) (kind commandKind, rest []byte, err error) {
 	name, rest, found := bytes.Cut(commandLine, []byte{' '})
 	if !found {
@@ -61,10 +66,14 @@ func parseCmdKind(commandLine []byte) (kind commandKind, rest []byte, err error)
 	return kind, rest, nil
 }
 
+// parseStoreCommandLine parses commandLine into a storeCommand.
 func parseStoreCommandLine(commandLine []byte) (storeCommand, error) {
 	keyBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
 	if !found {
 		return storeCommand{}, errors.New("missing ' ' after key")
+	}
+	if err := validateKey(keyBytes); err != nil {
+		return storeCommand{}, fmt.Errorf("invalid key: %w", err)
 	}
 
 	flagsBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
@@ -82,13 +91,16 @@ func parseStoreCommandLine(commandLine []byte) (storeCommand, error) {
 	}
 	expireTimeSec, err := strconv.Atoi(string(expireTimeBytes))
 	if err != nil {
-		return storeCommand{}, errors.New("expiration time in seconds must be an interger")
+		return storeCommand{}, errors.New("expiration time in seconds must be an integer")
 	}
 
 	dataLenBytes, commandLine, expectingNoReplyFlag := bytes.Cut(commandLine, []byte{' '})
 	dataLen, err := strconv.Atoi(string(dataLenBytes))
 	if err != nil {
-		return storeCommand{}, errors.New("data length must be an interger")
+		return storeCommand{}, errors.New("data length must be an integer")
+	}
+	if dataLen < 0 {
+		return storeCommand{}, errors.New("data length must not be negative")
 	}
 
 	var omitReply bool
@@ -108,6 +120,8 @@ func parseStoreCommandLine(commandLine []byte) (storeCommand, error) {
 	}, nil
 }
 
+// readDataBlock reads a data block of dataLen bytes followed by CRLF.
+// It returns the data without the trailing CRLF.
 func readDataBlock(r io.Reader, dataLen int) ([]byte, error) {
 	dataWithCrlf := make([]byte, dataLen+2) // crlf
 	if _, err := io.ReadFull(r, dataWithCrlf); err != nil {
@@ -119,21 +133,43 @@ func readDataBlock(r io.Reader, dataLen int) ([]byte, error) {
 	return dataWithCrlf[:len(dataWithCrlf)-2], nil
 }
 
-func parseCommandKind(name []byte) (commandKind, error) {
+// parseCommandKind returns the commandKind represented by commandName.
+func parseCommandKind(commandName []byte) (commandKind, error) {
 	switch {
-	case bytes.Equal(name, []byte(commandSet)):
+	case bytes.Equal(commandName, []byte(commandSet)):
 		return commandSet, nil
-	case bytes.Equal(name, []byte(commandGet)):
+	case bytes.Equal(commandName, []byte(commandGet)):
 		return commandGet, nil
-	case bytes.Equal(name, []byte(commandAdd)):
+	case bytes.Equal(commandName, []byte(commandAdd)):
 		return commandAdd, nil
-	case bytes.Equal(name, []byte(commandReplace)):
+	case bytes.Equal(commandName, []byte(commandReplace)):
 		return commandReplace, nil
-	case bytes.Equal(name, []byte(commandAppend)):
+	case bytes.Equal(commandName, []byte(commandAppend)):
 		return commandAppend, nil
-	case bytes.Equal(name, []byte(commandPrepend)):
+	case bytes.Equal(commandName, []byte(commandPrepend)):
 		return commandPrepend, nil
 	default:
-		return "", fmt.Errorf("invalid command name %q", name)
+		return "", fmt.Errorf("invalid command name %q", commandName)
 	}
+}
+
+const maxKeyLengthInBytes = 250
+
+// validateKey reports whether key is valid for the memcached text protocol.
+func validateKey(key []byte) error {
+	if len(key) == 0 {
+		return errors.New("key must not be empty")
+	}
+
+	if len(key) > maxKeyLengthInBytes {
+		return errors.New("key length exceeds maximum")
+	}
+
+	for _, b := range key {
+		if b <= ' ' || b == 0x7f {
+			return fmt.Errorf("invalid byte %q in key", b)
+		}
+	}
+
+	return nil
 }
