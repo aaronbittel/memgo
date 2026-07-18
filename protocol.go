@@ -99,8 +99,9 @@ func parseStoreCommandLine(commandLine []byte) (storeCommand, error) {
 	if err != nil {
 		return storeCommand{}, errors.New("data length must be an integer")
 	}
-	if dataLen < 0 {
-		return storeCommand{}, errors.New("data length must not be negative")
+
+	if err := validateDataLen(dataLen); err != nil {
+		return storeCommand{}, fmt.Errorf("invalid data length: %w", err)
 	}
 
 	var omitReply bool
@@ -169,6 +170,19 @@ func validateKey(key []byte) error {
 		if b <= ' ' || b == 0x7f {
 			return fmt.Errorf("invalid byte %q in key", b)
 		}
+	}
+
+	return nil
+}
+
+// validateDataLen reports whether data length is valid for the memcached text protocol.
+func validateDataLen(dataLen int) error {
+	if dataLen < 0 {
+		return errors.New("data length must not be negative")
+	}
+
+	if dataLen > maxValueSize {
+		return fmt.Errorf("value exceeds maxValueSize %d", maxValueSize)
 	}
 
 	return nil

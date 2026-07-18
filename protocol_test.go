@@ -367,3 +367,30 @@ func TestValidateKey(t *testing.T) {
 		}
 	})
 }
+
+func TestValidateDataLen(t *testing.T) {
+	tests := []struct {
+		name    string
+		dataLen int
+		wantErr bool
+	}{
+		{name: "negative", dataLen: -1, wantErr: true},
+		{name: "zero"},
+		{name: "maximum", dataLen: maxValueSize},
+		{name: "above maximum", dataLen: maxValueSize + 1, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDataLen(tt.dataLen)
+
+			if tt.wantErr && err == nil {
+				t.Fatal("wanted err got nil")
+			}
+
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}

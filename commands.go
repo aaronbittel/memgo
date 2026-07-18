@@ -86,7 +86,9 @@ func (s *server) handleSet(w io.Writer, br *bufio.Reader, cmd storeCommand) erro
 		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
 	}
 
-	s.store.set(cmd.key, val)
+	if err := s.store.set(cmd.key, val); err != nil {
+		return err
+	}
 
 	if !cmd.omitReply {
 		if _, err := io.WriteString(w, "STORED\r\n"); err != nil {
@@ -109,9 +111,13 @@ func (s *server) handleAdd(w io.Writer, br *bufio.Reader, cmd storeCommand) erro
 		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
 	}
 
-	var resp string
+	added, err := s.store.add(cmd.key, val)
+	if err != nil {
+		return err
+	}
 
-	if s.store.add(cmd.key, val) {
+	var resp string
+	if added {
 		resp = "STORED\r\n"
 	} else {
 		resp = "NOT_STORED\r\n"
@@ -138,8 +144,13 @@ func (s *server) handleReplace(w io.Writer, br *bufio.Reader, cmd storeCommand) 
 		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
 	}
 
+	replaced, err := s.store.replace(cmd.key, val)
+	if err != nil {
+		return err
+	}
+
 	var resp string
-	if s.store.replace(cmd.key, val) {
+	if replaced {
 		resp = "STORED\r\n"
 	} else {
 		resp = "NOT_STORED\r\n"
@@ -160,8 +171,13 @@ func (s *server) handleAppend(w io.Writer, br *bufio.Reader, cmd storeCommand) e
 		return err
 	}
 
+	appended, err := s.store.append(cmd.key, data)
+	if err != nil {
+		return err
+	}
+
 	var resp string
-	if s.store.append(cmd.key, data) {
+	if appended {
 		resp = "STORED\r\n"
 	} else {
 		resp = "NOT_STORED\r\n"
@@ -182,8 +198,13 @@ func (s *server) handlePrepend(w io.Writer, br *bufio.Reader, cmd storeCommand) 
 		return err
 	}
 
+	prepended, err := s.store.prepend(cmd.key, data)
+	if err != nil {
+		return err
+	}
+
 	var resp string
-	if s.store.prepend(cmd.key, data) {
+	if prepended {
 		resp = "STORED\r\n"
 	} else {
 		resp = "NOT_STORED\r\n"

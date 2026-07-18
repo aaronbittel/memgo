@@ -10,6 +10,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestStoreSetValueLength(t *testing.T) {
+	t.Run("empty data", func(t *testing.T) {
+		s := newStore()
+
+		data := []byte{}
+		require.NoError(t, s.set("test", value{data: data}))
+	})
+
+	t.Run("maxValueSize", func(t *testing.T) {
+		s := newStore()
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize)
+		require.NoError(t, s.set("test", value{data: data}))
+	})
+
+	t.Run("value length too large", func(t *testing.T) {
+		s := newStore()
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
+		require.Error(t, s.set("test", value{data: data}), errValueTooLarge)
+	})
+}
+
 func TestStoreExpiry(t *testing.T) {
 	t.Run("positive", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
@@ -111,7 +134,9 @@ func TestStoreAdd(t *testing.T) {
 
 		want := value{data: []byte("new value"), flags: 10}
 
-		require.True(t, s.add("test", want), "add() returned false; want true")
+		added, err := s.add("test", want)
+		require.NoError(t, err)
+		require.True(t, added, "add() returned false; want true")
 
 		got, ok := s.get("test")
 		require.True(t, ok, "get() returned ok=false; want true")
@@ -126,7 +151,8 @@ func TestStoreAdd(t *testing.T) {
 
 		s.set("test", original)
 
-		added := s.add("test", value{data: []byte("replacement"), flags: 20})
+		added, err := s.add("test", value{data: []byte("replacement"), flags: 20})
+		require.NoError(t, err)
 		require.False(t, added, "add() returned true for an existing live value; want false")
 
 		got, ok := s.get("test")
@@ -155,7 +181,9 @@ func TestStoreAdd(t *testing.T) {
 				expiredAt: time.Now().Add(ttl),
 			}
 
-			require.True(t, s.add("test", replacement), "add() returned false for an expired value; want true")
+			added, err := s.add("test", replacement)
+			require.NoError(t, err)
+			require.True(t, added, "add() returned false for an expired value; want true")
 
 			got, ok := s.get("test")
 			require.True(t, ok, "get() returned ok=false; want true")
@@ -165,11 +193,42 @@ func TestStoreAdd(t *testing.T) {
 	})
 }
 
+func TestStoreAddValueLength(t *testing.T) {
+	t.Run("empty data", func(t *testing.T) {
+		s := newStore()
+
+		data := []byte{}
+		added, err := s.add("test", value{data: data})
+		require.NoError(t, err)
+		require.True(t, added)
+	})
+
+	t.Run("maxValueSize", func(t *testing.T) {
+		s := newStore()
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize)
+
+		added, err := s.add("test", value{data: data})
+		require.NoError(t, err)
+		require.True(t, added)
+	})
+
+	t.Run("value length too large", func(t *testing.T) {
+		s := newStore()
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
+
+		_, err := s.add("test", value{data: data})
+		require.ErrorIs(t, err, errValueTooLarge)
+	})
+}
+
 func TestStoreReplace(t *testing.T) {
 	t.Run("rejects missing value", func(t *testing.T) {
 		s := newStore()
 
-		replaced := s.replace("missing", value{data: []byte("replacement")})
+		replaced, err := s.replace("missing", value{data: []byte("replacement")})
+		require.NoError(t, err)
 		require.False(t, replaced, "replace() returned true for a missing value; want false")
 
 		_, exists := rawStoreValue(s, "missing")
@@ -187,7 +246,9 @@ func TestStoreReplace(t *testing.T) {
 			expiredAt: time.Now().Add(time.Minute),
 		}
 
-		require.True(t, s.replace("test", replacement), "replace() returned false for a live value; want true")
+		replaced, err := s.replace("test", replacement)
+		require.NoError(t, err)
+		require.True(t, replaced, "replace() returned false for a live value; want true")
 
 		got, ok := s.get("test")
 		require.True(t, ok, "get() returned ok=false; want true")
@@ -206,17 +267,51 @@ func TestStoreReplace(t *testing.T) {
 
 		s.set("test", expired)
 
-		replaced := s.replace("test", value{
+		replaced, err := s.replace("test", value{
 			data:  []byte("replacement"),
 			flags: 20,
 		})
 
+		require.NoError(t, err)
 		require.False(t, replaced, "replace() returned true for an expired value; want false")
 
 		got, exists := rawStoreValue(s, "test")
 		require.True(t, exists, "replace() removed the expired value unexpectedly")
 
 		requireEqualValue(t, got, expired)
+	})
+}
+
+func TestStoreReplaceValueLength(t *testing.T) {
+	t.Run("empty data", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := []byte{}
+		replaced, err := s.replace("test", value{data: data})
+		require.NoError(t, err)
+		require.True(t, replaced)
+	})
+
+	t.Run("maxValueSize", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize)
+
+		replaced, err := s.replace("test", value{data: data})
+		require.NoError(t, err)
+		require.True(t, replaced)
+	})
+
+	t.Run("value length too large", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
+
+		_, err := s.replace("test", value{data: data})
+		require.ErrorIs(t, err, errValueTooLarge)
 	})
 }
 
@@ -232,7 +327,9 @@ func TestStoreAppend(t *testing.T) {
 			expiredAt: expiredAt,
 		})
 
-		require.Truef(t, s.append("test", []byte(" world")), "returned false; want true")
+		appended, err := s.append("test", []byte(" world"))
+		require.NoError(t, err)
+		require.Truef(t, appended, "returned false; want true")
 
 		got, ok := s.get("test")
 		require.True(t, ok, "get() returned ok=false; want true")
@@ -244,9 +341,10 @@ func TestStoreAppend(t *testing.T) {
 	t.Run("missing value", func(t *testing.T) {
 		s := newStore()
 
-		stored := s.append("missing", []byte("value"))
+		appended, err := s.append("missing", []byte("value"))
+		require.NoError(t, err)
 
-		require.Falsef(t, stored, "returned true for a missing value; want false")
+		require.Falsef(t, appended, "returned true for a missing value; want false")
 
 		_, exists := rawStoreValue(s, "missing")
 		require.Falsef(t, exists, "created a missing value")
@@ -263,14 +361,97 @@ func TestStoreAppend(t *testing.T) {
 
 		s.set("test", expired)
 
-		stored := s.append("test", []byte("new data"))
+		appended, err := s.append("test", []byte("new data"))
+		require.NoError(t, err)
 
-		require.Falsef(t, stored, "returned true for an expired value; want false")
+		require.Falsef(t, appended, "returned true for an expired value; want false")
 
 		got, exists := rawStoreValue(s, "test")
 		require.Truef(t, exists, "removed the expired value unexpectedly")
 
 		requireEqualValue(t, got, expired)
+	})
+}
+
+func TestStoreAppendValueLength(t *testing.T) {
+	t.Run("empty data", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := []byte{}
+		appended, err := s.append("test", data)
+		require.NoError(t, err)
+		require.True(t, appended)
+	})
+
+	t.Run("maxValueSize", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize)
+
+		appended, err := s.append("test", data)
+		require.NoError(t, err)
+		require.True(t, appended)
+	})
+
+	t.Run("value length too large", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
+
+		_, err := s.append("test", data)
+		require.ErrorIs(t, err, errValueTooLarge)
+	})
+
+	t.Run("result exactly maxValueSize", func(t *testing.T) {
+		s := newStore()
+
+		require.NoError(t, s.set("test", value{
+			data: bytes.Repeat([]byte{'a'}, maxValueSize-1),
+		}))
+
+		appended, err := s.append("test", []byte{'b'})
+
+		require.NoError(t, err)
+		require.True(t, appended)
+
+		got, ok := s.get("test")
+		require.True(t, ok)
+		require.Len(t, got.data, maxValueSize)
+	})
+
+	t.Run("combined value too large", func(t *testing.T) {
+		s := newStore()
+
+		original := bytes.Repeat([]byte{'a'}, maxValueSize)
+
+		require.NoError(t, s.set("test", value{
+			data: original,
+		}))
+
+		appended, err := s.append("test", []byte{'b'})
+
+		require.ErrorIs(t, err, errValueTooLarge)
+		require.False(t, appended)
+
+		// The failed operation must not modify the stored value.
+		got, ok := s.get("test")
+		require.True(t, ok)
+		require.Equal(t, original, got.data)
+	})
+
+	t.Run("incoming value alone too large", func(t *testing.T) {
+		s := newStore()
+		require.NoError(t, s.set("test", value{}))
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
+
+		appended, err := s.append("test", data)
+
+		require.ErrorIs(t, err, errValueTooLarge)
+		require.False(t, appended)
 	})
 }
 
@@ -286,7 +467,10 @@ func TestStorePrepend(t *testing.T) {
 			expiredAt: expiredAt,
 		})
 
-		require.Truef(t, s.prepend("test", []byte("hello ")), "returned false; want true")
+		prepended, err := s.prepend("test", []byte("hello "))
+
+		require.NoError(t, err)
+		require.Truef(t, prepended, "returned false; want true")
 
 		got, ok := s.get("test")
 		require.True(t, ok, "get() returned ok=false; want true")
@@ -298,9 +482,10 @@ func TestStorePrepend(t *testing.T) {
 	t.Run("missing value", func(t *testing.T) {
 		s := newStore()
 
-		stored := s.prepend("missing", []byte("value"))
+		prepended, err := s.prepend("missing", []byte("value"))
+		require.NoError(t, err)
 
-		require.Falsef(t, stored, "returned true for a missing value; want false")
+		require.Falsef(t, prepended, "returned true for a missing value; want false")
 
 		_, exists := rawStoreValue(s, "missing")
 		require.Falsef(t, exists, "created a missing value")
@@ -317,14 +502,97 @@ func TestStorePrepend(t *testing.T) {
 
 		s.set("test", expired)
 
-		stored := s.prepend("test", []byte("new data"))
+		prepended, err := s.prepend("test", []byte("new data"))
+		require.NoError(t, err)
 
-		require.Falsef(t, stored, "returned true for an expired value; want false")
+		require.Falsef(t, prepended, "returned true for an expired value; want false")
 
 		got, exists := rawStoreValue(s, "test")
 		require.Truef(t, exists, "removed the expired value unexpectedly")
 
 		requireEqualValue(t, got, expired)
+	})
+}
+
+func TestStorePrependValueLength(t *testing.T) {
+	t.Run("empty data", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := []byte{}
+		prepended, err := s.prepend("test", data)
+		require.NoError(t, err)
+		require.True(t, prepended)
+	})
+
+	t.Run("maxValueSize", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize)
+
+		prepended, err := s.prepend("test", data)
+		require.NoError(t, err)
+		require.True(t, prepended)
+	})
+
+	t.Run("value length too large", func(t *testing.T) {
+		s := newStore()
+		s.set("test", value{})
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
+
+		_, err := s.prepend("test", data)
+		require.ErrorIs(t, err, errValueTooLarge)
+	})
+
+	t.Run("result exactly maxValueSize", func(t *testing.T) {
+		s := newStore()
+
+		require.NoError(t, s.set("test", value{
+			data: bytes.Repeat([]byte{'a'}, maxValueSize-1),
+		}))
+
+		prepended, err := s.prepend("test", []byte{'b'})
+
+		require.NoError(t, err)
+		require.True(t, prepended)
+
+		got, ok := s.get("test")
+		require.True(t, ok)
+		require.Len(t, got.data, maxValueSize)
+	})
+
+	t.Run("combined value too large", func(t *testing.T) {
+		s := newStore()
+
+		original := bytes.Repeat([]byte{'a'}, maxValueSize)
+
+		require.NoError(t, s.set("test", value{
+			data: original,
+		}))
+
+		prepended, err := s.prepend("test", []byte{'b'})
+
+		require.ErrorIs(t, err, errValueTooLarge)
+		require.False(t, prepended)
+
+		// The failed operation must not modify the stored value.
+		got, ok := s.get("test")
+		require.True(t, ok)
+		require.Equal(t, original, got.data)
+	})
+
+	t.Run("incoming value alone too large", func(t *testing.T) {
+		s := newStore()
+		require.NoError(t, s.set("test", value{}))
+
+		data := bytes.Repeat([]byte{'a'}, maxValueSize+1)
+
+		prepended, err := s.prepend("test", data)
+
+		require.ErrorIs(t, err, errValueTooLarge)
+		require.False(t, prepended)
 	})
 }
 
@@ -342,7 +610,9 @@ func TestStoreConcurrentAppend(t *testing.T) {
 	for range goroutines {
 		wg.Go(func() {
 			<-start
-			results <- s.append("test", []byte{'x'})
+			appended, err := s.append("test", []byte{'x'})
+			require.NoError(t, err)
+			results <- appended
 		})
 	}
 
