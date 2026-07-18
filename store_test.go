@@ -46,15 +46,15 @@ func TestStoreExpiry(t *testing.T) {
 			_, exists := s.get("test")
 			require.True(t, exists, "value missing immediately after insertion")
 
-			time.Sleep(ttl)
+			time.Sleep(ttl - time.Nanosecond)
 
 			_, exists = s.get("test")
-			require.True(t, exists, "value expired exactly at its deadline")
+			require.True(t, exists, "value expired before its expiration deadline")
 
 			time.Sleep(time.Nanosecond)
 
 			_, exists = s.get("test")
-			require.False(t, exists, "value remained after its deadline")
+			require.False(t, exists, "value remained live at its expiration deadline")
 		})
 	})
 

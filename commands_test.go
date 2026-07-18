@@ -230,7 +230,7 @@ func TestSetExpiry(t *testing.T) {
 			got = sb.String()
 			require.Equal(t, want, got)
 
-			time.Sleep(ttl)
+			time.Sleep(ttl - time.Nanosecond)
 
 			sb.Reset()
 			err = s.handleCommand(&sb, bufio.NewReader(strings.NewReader("get test\r\n")))
@@ -570,10 +570,12 @@ func TestValueExpirationBoundary(t *testing.T) {
 
 		v := value{expiredAt: time.Now().Add(ttl)}
 
-		require.False(t, v.isExpired(), "value should remain live exactly at its expiration deadline")
+		time.Sleep(ttl - time.Nanosecond)
 
-		time.Sleep(ttl + time.Nanosecond)
+		require.False(t, v.isExpired(), "value should remain live immediately before its expiration deadline")
 
-		require.True(t, v.isExpired(), "value should be expired after its expiration deadline")
+		time.Sleep(time.Nanosecond)
+
+		require.True(t, v.isExpired(), "value should be expired exactly at its expiration deadline")
 	})
 }

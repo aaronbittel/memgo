@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// TODO: use !now.Before(v.expiredAt) to expire an item at the expire time
 // TODO: implement max cache size
 
 const (
@@ -26,7 +25,7 @@ func (v value) isExpired() bool {
 		return false
 	}
 
-	return v.expiredAt.Before(time.Now())
+	return !time.Now().Before(v.expiredAt)
 }
 
 type store struct {
