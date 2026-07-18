@@ -7,6 +7,7 @@ import (
 )
 
 // TODO: use !now.Before(v.expiredAt) to expire an item at the expire time
+// TODO: implement max cache size
 
 const (
 	maxValueSize = 1024 * 1024 // 1 MiB
@@ -20,12 +21,12 @@ type value struct {
 	expiredAt time.Time
 }
 
-func (v value) isExpired(t time.Time) bool {
+func (v value) isExpired() bool {
 	if v.expiredAt.IsZero() {
 		return false
 	}
 
-	return v.expiredAt.Before(t)
+	return v.expiredAt.Before(time.Now())
 }
 
 type store struct {
@@ -38,8 +39,6 @@ func newStore() *store {
 }
 
 func (cm *store) get(key string) (value, bool) {
-	now := time.Now()
-
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -49,7 +48,7 @@ func (cm *store) get(key string) (value, bool) {
 		return value{}, false
 	}
 
-	if val.isExpired(now) {
+	if val.isExpired() {
 		delete(cm.store, key)
 		return value{}, false
 	}
@@ -73,8 +72,6 @@ func (cm *store) add(key string, value value) (added bool, err error) {
 		return false, err
 	}
 
-	now := time.Now()
-
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -84,7 +81,7 @@ func (cm *store) add(key string, value value) (added bool, err error) {
 		return true, nil
 	}
 
-	if cur.isExpired(now) {
+	if cur.isExpired() {
 		cm.store[key] = value
 		return true, nil
 	}
@@ -97,13 +94,11 @@ func (cm *store) replace(key string, value value) (replaced bool, err error) {
 		return false, err
 	}
 
-	now := time.Now()
-
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	cur, ok := cm.store[key]
-	if !ok || cur.isExpired(now) {
+	if !ok || cur.isExpired() {
 		return false, nil
 	}
 
@@ -116,13 +111,11 @@ func (cm *store) append(key string, valueData []byte) (appended bool, err error)
 		return false, err
 	}
 
-	now := time.Now()
-
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	cur, ok := cm.store[key]
-	if !ok || cur.isExpired(now) {
+	if !ok || cur.isExpired() {
 		return false, nil
 	}
 
@@ -145,13 +138,11 @@ func (cm *store) prepend(key string, valueData []byte) (prepended bool, err erro
 		return false, err
 	}
 
-	now := time.Now()
-
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	cur, ok := cm.store[key]
-	if !ok || cur.isExpired(now) {
+	if !ok || cur.isExpired() {
 		return false, nil
 	}
 

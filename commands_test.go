@@ -565,19 +565,15 @@ func TestPrepend(t *testing.T) {
 }
 
 func TestValueExpirationBoundary(t *testing.T) {
-	deadline := time.Date(2026, time.July, 17, 12, 0, 0, 0, time.UTC)
+	synctest.Test(t, func(t *testing.T) {
+		ttl := time.Hour
 
-	v := value{expiredAt: deadline}
+		v := value{expiredAt: time.Now().Add(ttl)}
 
-	require.False(
-		t,
-		v.isExpired(deadline),
-		"value should remain live exactly at its expiration deadline",
-	)
+		require.False(t, v.isExpired(), "value should remain live exactly at its expiration deadline")
 
-	require.True(
-		t,
-		v.isExpired(deadline.Add(time.Nanosecond)),
-		"value should be expired after its expiration deadline",
-	)
+		time.Sleep(ttl + time.Nanosecond)
+
+		require.True(t, v.isExpired(), "value should be expired after its expiration deadline")
+	})
 }
