@@ -2,9 +2,10 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
+	"net"
+	"strconv"
 	"time"
 )
 
@@ -61,16 +62,34 @@ func (s *server) dispatchCommand(w io.Writer, br *bufio.Reader, kind commandKind
 	}
 }
 
+var (
+	crlf      = []byte("\r\n")
+	end       = []byte("END\r\n")
+	stored    = []byte("STORED\r\n")
+	notStored = []byte("NOT_STORED\r\n")
+	valueResp = []byte("VALUE")
+)
+
 func (s *server) handleGet(w io.Writer, key []byte) error {
-	var buf bytes.Buffer
-
 	val, ok := s.store.get(string(key))
-	if ok {
-		fmt.Fprintf(&buf, "VALUE %s %d %d\r\n%s\r\n", key, val.flags, len(val.data), val.data)
+	if !ok {
+		_, err := w.Write(end)
+		return err
 	}
-	buf.WriteString("END\r\n")
 
-	_, err := buf.WriteTo(w)
+	header := make([]byte, 0, len(key)+48)
+	header = append(header, valueResp...)
+	header = append(header, ' ')
+	header = append(header, key...)
+	header = append(header, ' ')
+	header = strconv.AppendUint(header, uint64(val.flags), 10)
+	header = append(header, ' ')
+	header = strconv.AppendInt(header, int64(len(val.data)), 10)
+	header = append(header, '\r', '\n')
+
+	bufs := net.Buffers{header, val.data, crlf, end}
+
+	_, err := bufs.WriteTo(w)
 	return err
 }
 
@@ -91,7 +110,7 @@ func (s *server) handleSet(w io.Writer, br *bufio.Reader, cmd storeCommand) erro
 	}
 
 	if !cmd.omitReply {
-		if _, err := io.WriteString(w, "STORED\r\n"); err != nil {
+		if _, err := w.Write(stored); err != nil {
 			return err
 		}
 	}
@@ -116,20 +135,19 @@ func (s *server) handleAdd(w io.Writer, br *bufio.Reader, cmd storeCommand) erro
 		return err
 	}
 
-	var resp string
+	if cmd.omitReply {
+		return nil
+	}
+
+	var resp []byte
 	if added {
-		resp = "STORED\r\n"
+		resp = stored
 	} else {
-		resp = "NOT_STORED\r\n"
+		resp = notStored
 	}
 
-	if !cmd.omitReply {
-		if _, err := io.WriteString(w, resp); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	_, err = w.Write(resp)
+	return err
 }
 
 func (s *server) handleReplace(w io.Writer, br *bufio.Reader, cmd storeCommand) error {
@@ -149,20 +167,19 @@ func (s *server) handleReplace(w io.Writer, br *bufio.Reader, cmd storeCommand) 
 		return err
 	}
 
-	var resp string
+	if cmd.omitReply {
+		return nil
+	}
+
+	var resp []byte
 	if replaced {
-		resp = "STORED\r\n"
+		resp = stored
 	} else {
-		resp = "NOT_STORED\r\n"
+		resp = notStored
 	}
 
-	if !cmd.omitReply {
-		if _, err := io.WriteString(w, resp); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	_, err = w.Write(resp)
+	return err
 }
 
 func (s *server) handleAppend(w io.Writer, br *bufio.Reader, cmd storeCommand) error {
@@ -176,20 +193,19 @@ func (s *server) handleAppend(w io.Writer, br *bufio.Reader, cmd storeCommand) e
 		return err
 	}
 
-	var resp string
+	if cmd.omitReply {
+		return nil
+	}
+
+	var resp []byte
 	if appended {
-		resp = "STORED\r\n"
+		resp = stored
 	} else {
-		resp = "NOT_STORED\r\n"
+		resp = notStored
 	}
 
-	if !cmd.omitReply {
-		if _, err := io.WriteString(w, resp); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	_, err = w.Write(resp)
+	return err
 }
 
 func (s *server) handlePrepend(w io.Writer, br *bufio.Reader, cmd storeCommand) error {
@@ -203,20 +219,19 @@ func (s *server) handlePrepend(w io.Writer, br *bufio.Reader, cmd storeCommand) 
 		return err
 	}
 
-	var resp string
+	if cmd.omitReply {
+		return nil
+	}
+
+	var resp []byte
 	if prepended {
-		resp = "STORED\r\n"
+		resp = stored
 	} else {
-		resp = "NOT_STORED\r\n"
+		resp = notStored
 	}
 
-	if !cmd.omitReply {
-		if _, err := io.WriteString(w, resp); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	_, err = w.Write(resp)
+	return err
 }
 
 func (s *server) calculateExpiryTime(expireTimeSec int) time.Time {
