@@ -7,6 +7,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -578,4 +579,77 @@ func TestValueExpirationBoundary(t *testing.T) {
 
 		require.True(t, v.isExpired(), "value should be expired exactly at its expiration deadline")
 	})
+}
+
+func TestCalculateExpiryTime(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int64
+		want func(now time.Time) time.Time
+	}{
+		{
+			name: "zero means no expiration",
+			in:   0,
+			want: func(time.Time) time.Time {
+				return time.Time{}
+			},
+		},
+		{
+			name: "negative means immediately expired",
+			in:   -1,
+			want: func(now time.Time) time.Time {
+				return now
+			},
+		},
+		{
+			name: "one second",
+			in:   1,
+			want: func(now time.Time) time.Time {
+				return now.Add(time.Second)
+			},
+		},
+		{
+			name: "one minute",
+			in:   60,
+			want: func(now time.Time) time.Time {
+				return now.Add(time.Minute)
+			},
+		},
+		{
+			name: "one hour",
+			in:   60 * 60,
+			want: func(now time.Time) time.Time {
+				return now.Add(time.Hour)
+			},
+		},
+		{
+			name: "maximum relative expiration",
+			in:   maxRelativeExptime,
+			want: func(now time.Time) time.Time {
+				return now.Add(
+					time.Duration(maxRelativeExptime) * time.Second,
+				)
+			},
+		},
+		{
+			name: "above relative maximum is Unix time",
+			in:   maxRelativeExptime + 1,
+			want: func(time.Time) time.Time {
+				return time.Unix(maxRelativeExptime+1, 0)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				now := time.Now()
+
+				got := calculateExpiryTime(tt.in)
+				want := tt.want(now)
+
+				assert.True(t, got.Equal(want), "got %v, want %v", got, want)
+			})
+		})
+	}
 }

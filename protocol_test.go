@@ -153,11 +153,11 @@ func TestParseStoreCommandLine(t *testing.T) {
 				name:  "command with no reply set",
 				input: "test 127 5124 4 noreply",
 				want: storeCommand{
-					key:           "test",
-					flags:         127,
-					expireTimeSec: 5124,
-					dataLen:       4,
-					omitReply:     true,
+					key:       "test",
+					flags:     127,
+					exptime:   5124,
+					dataLen:   4,
+					omitReply: true,
 				},
 			},
 			{
@@ -178,9 +178,9 @@ func TestParseStoreCommandLine(t *testing.T) {
 				name:  "negative expiration time",
 				input: "test 0 -1 1",
 				want: storeCommand{
-					key:           "test",
-					expireTimeSec: -1,
-					dataLen:       1,
+					key:     "test",
+					exptime: -1,
+					dataLen: 1,
 				},
 			},
 		}

@@ -21,11 +21,11 @@ const (
 )
 
 type storeCommand struct {
-	key           string
-	flags         uint16
-	expireTimeSec int
-	dataLen       int
-	omitReply     bool
+	key       string
+	flags     uint16
+	exptime   int64
+	dataLen   int
+	omitReply bool
 }
 
 var errInvalidCommandLine = errors.New("invalid command line")
@@ -85,11 +85,11 @@ func parseStoreCommandLine(commandLine []byte) (storeCommand, error) {
 		return storeCommand{}, fmt.Errorf("could not parse flags: %q", flagsBytes)
 	}
 
-	expireTimeBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
+	exptimeBytes, commandLine, found := bytes.Cut(commandLine, []byte{' '})
 	if !found {
 		return storeCommand{}, errors.New("missing ' ' after expiration time")
 	}
-	expireTimeSec, err := strconv.Atoi(string(expireTimeBytes))
+	exptime, err := strconv.ParseInt(string(exptimeBytes), 10, 64)
 	if err != nil {
 		return storeCommand{}, errors.New("expiration time in seconds must be an integer")
 	}
@@ -113,11 +113,11 @@ func parseStoreCommandLine(commandLine []byte) (storeCommand, error) {
 	}
 
 	return storeCommand{
-		key:           string(keyBytes),
-		flags:         uint16(flagU64),
-		expireTimeSec: expireTimeSec,
-		dataLen:       dataLen,
-		omitReply:     omitReply,
+		key:       string(keyBytes),
+		flags:     uint16(flagU64),
+		exptime:   exptime,
+		dataLen:   dataLen,
+		omitReply: omitReply,
 	}, nil
 }
 

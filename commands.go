@@ -102,7 +102,7 @@ func (s *server) handleSet(w io.Writer, br *bufio.Reader, cmd storeCommand) erro
 	val := value{
 		data:      data,
 		flags:     cmd.flags,
-		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
+		expiredAt: calculateExpiryTime(cmd.exptime),
 	}
 
 	if err := s.store.set(cmd.key, val); err != nil {
@@ -127,7 +127,7 @@ func (s *server) handleAdd(w io.Writer, br *bufio.Reader, cmd storeCommand) erro
 	val := value{
 		data:      data,
 		flags:     cmd.flags,
-		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
+		expiredAt: calculateExpiryTime(cmd.exptime),
 	}
 
 	added, err := s.store.add(cmd.key, val)
@@ -159,7 +159,7 @@ func (s *server) handleReplace(w io.Writer, br *bufio.Reader, cmd storeCommand) 
 	val := value{
 		data:      data,
 		flags:     cmd.flags,
-		expiredAt: s.calculateExpiryTime(cmd.expireTimeSec),
+		expiredAt: calculateExpiryTime(cmd.exptime),
 	}
 
 	replaced, err := s.store.replace(cmd.key, val)
@@ -234,10 +234,17 @@ func (s *server) handlePrepend(w io.Writer, br *bufio.Reader, cmd storeCommand) 
 	return err
 }
 
-func (s *server) calculateExpiryTime(expireTimeSec int) time.Time {
-	if expireTimeSec == 0 {
-		return time.Time{}
-	}
+const maxRelativeExptime int64 = 60 * 60 * 24 * 30
 
-	return time.Now().Add(time.Duration(expireTimeSec) * time.Second)
+func calculateExpiryTime(exptime int64) time.Time {
+	switch {
+	case exptime == 0:
+		return time.Time{}
+	case exptime < 0:
+		return time.Now()
+	case exptime > maxRelativeExptime:
+		return time.Unix(exptime, 0)
+	default:
+		return time.Now().Add(time.Duration(exptime) * time.Second)
+	}
 }
